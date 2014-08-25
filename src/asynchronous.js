@@ -3,7 +3,7 @@
 *   Asynchronous.js
 *   @version: @@VERSION@@
 *
-*   Simple JavaScript class to manage asynchronous, parallel, sequential and interleaved tasks
+*   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
 *
 **/
@@ -64,11 +64,9 @@
         ,thisPath = path( )
         
         ,notThisPath = function( path ) {
-            return path && path.length && path !== thisPath.file;
+            return !!(path && path.length && path !== thisPath.file);
         }
     ;
-    
-    //console.log([isNode, isNodeProcess, isBrowser, isWebWorker, supportsMultiThread]);
     
     if ( isWebWorker )
     {
@@ -99,7 +97,6 @@
     {
         // adapted from https://github.com/adambom/parallel.js
         var fs = require('fs'), ps = require( 'child_process' );
-        
         root.close = function( ) { process.exit( ); };
         root.postMessage = function( data ) { process.send( toJSON( {data: data} ) ); };
         root.importScripts = function( scripts )  {
@@ -144,7 +141,9 @@
 
             postMessage: function( data ) {
                 if ( this.process )
+                {
                     this.process.send( toJSON( {data: data} ) );
+                }
                 return this;
             },
 
@@ -169,21 +168,21 @@
         if ( !(this instanceof Task) ) return new Task( task );
         if ( 1 > arguments.length ) task = null;
         
-        var self = this, async = null, 
+        var self = this, aqueue = null, 
             onComplete = null, run_once = false,
             times = false, loop = false, recurse = false,
             until = false, untilNot = false, 
             loopObject = null, repeatCounter = 0,
             repeatIncrement = 1, repeatTimes = null,
             repeatUntil = null, repeatUntilNot = null,
-            lastResult = undef
-        ;
+            lastResult = undef,
         
-        var run = function( ) {
-            lastResult = task( );
-            run_once = true;
-            return lastResult;
-        };
+            run = function( ) {
+                lastResult = task( self );
+                run_once = true;
+                return lastResult;
+            }
+        ;
         
         self.task = function( t ) {
             task = t;
@@ -193,11 +192,23 @@
         self.queue = function( q ) {
             if ( arguments.length )
             {
-                async = q;
+                aqueue = q;
                 return self;
             }
-            return async;
+            return aqueue;
         };
+        
+        self.jumpNext = function( offset ) { if ( aqueue ) aqueue.jumpNext( false, offset ); };
+        
+        self.abort = function( dispose ) {
+            if ( aqueue ) 
+            {
+                aqueue.abort( false );
+                if ( dispose ) aqueue.dispose( );
+            }
+        };
+        
+        self.dispose = function( ) { if ( aqueue ) aqueue.dispose( ); };
         
         self.canRun = function( ) {
             if ( !task ) return false;
@@ -210,10 +221,16 @@
         
         self.run = run;
         
-        self.iif = function( cond, task_if_true, else_task ) {
+        self.runWithArgs = function( args ) {
+            lastResult = task.apply( null, args );
+            run_once = true;
+            return lastResult;
+        };
+        
+        self.iif = function( cond, if_true_task, else_task ) {
             if ( cond )
             {
-                task = task_if_true;
+                task = if_true_task;
             }
             else if ( arguments.length > 2 )
             {
@@ -248,7 +265,7 @@
             return self;
         };
         
-        self.times = function( numTimes, startCounter, increment ) {
+        self.loop = function( numTimes, startCounter, increment ) {
             lastResult = undef;
             loopObject = null;
             repeatCounter = startCounter || 0;
@@ -270,7 +287,7 @@
             return self;
         };
         
-        self.loopOver = function( loopObj ) {
+        self.each = function( loopObj ) {
             lastResult = undef;
             loopObject = loopObj;
             repeatCounter = 0;
@@ -332,54 +349,61 @@
     Task.iif = function( ) { var args = slice(arguments), T = new Task( ); return T.iif.apply( T, args ); };
     Task.until = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.until.apply( T, args ); };
     Task.untilNot = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.untilNot.apply( T, args ); };
-    Task.times = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.times.apply( T, args ); };
-    Task.loopOver = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.loopOver.apply( T, args ); };
+    Task.loop = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.loop.apply( T, args ); };
+    Task.each = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.each.apply( T, args ); };
     Task.recurse = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.recurse.apply( T, args ); };
     
-    var Field = function( f ) {
+    /*var Field = function( f ) {
         return new Function("o", "return o"+(f||'')+";");
-    };
+    };*/
     
     // run tasks in parallel threads (eg. web workers, child processes)
-    function runParallelised( scope ) 
+    function runParallelised( scope, args ) 
     { 
-        scope.$run_mode = PARALLELISED;
+        scope.$runmode = PARALLELISED;
+        scope.$running = false;
         return scope;
     }
     
     // serialize async-tasks that are non-blocking/asynchronous in a quasi-sequential manner
-    function runLinearised( scope ) 
+    function runLinearised( scope, args ) 
     { 
         var self = scope, queue = self.$queue, task;
-        self.$run_mode = LINEARISED;
+        self.$runmode = LINEARISED;
         if ( queue )
         {
             while ( queue.length && (!queue[ 0 ] || !queue[ 0 ].canRun( )) ) queue.shift( );
             // first task should call next tasks upon completion, via "in-place callback templates"
             if ( queue.length ) 
             {
+                self.$running = true;
                 task = queue.shift( );
-                task.run( );
+                if ( args ) task.runWithArgs( args ); else task.run( );
                 task.complete( );
+            }
+            else
+            {
+                self.$running = false;
             }
         }
         return self;
     }
     
     // interleave async-tasks in background in quasi-parallel manner
-    function runInterleaved( scope ) 
+    function runInterleaved( scope, args ) 
     { 
         var self = scope, queue = self.$queue, task, index = 0;
-        self.$run_mode = INTERLEAVED;
+        self.$runmode = INTERLEAVED;
         if ( queue && queue.length )
         {
+            self.$running = true;
             while ( index < queue.length )
             {
                 task = queue[ index ];
                 
                 if ( task && task.canRun( ) )
                 {
-                    task.run( );
+                    if ( args ) task.runWithArgs( args ); else task.run( );
                     if ( task.isFinished( ) )
                     {
                         queue.shift( );
@@ -395,23 +419,25 @@
                     queue.shift( );
                 }
             }
+            self.$running = false;
             self.$timer = setTimeout( curry( runInterleaved, self ), self.$interval );
         }
         return self;
     }
     
     // run tasks in a quasi-asynchronous manner (avoid blocking the thread)
-    function runSequenced( scope ) 
+    function runSequenced( scope, args ) 
     {
         var self = scope, queue = self.$queue, task;
-        self.$run_mode = SEQUENCED;
+        self.$runmode = SEQUENCED;
         if ( queue && queue.length )
         {
             task = queue[ 0 ];
             
             if ( task && task.canRun( ) )
             {
-                task.run( );
+                self.$running = true;
+                if ( args ) task.runWithArgs( args ); else task.run( );
                 if ( task.isFinished( ) )
                 {
                     queue.shift( );
@@ -422,6 +448,7 @@
             {
                 queue.shift( );
             }
+            self.$running = false;
             self.$timer = setTimeout( curry( runSequenced, self ), self.$interval );
         }
         return self;
@@ -433,7 +460,8 @@
         var self = this;
         self.$interval = arguments.length ? parseInt(interval, 10) : DEFAULT_INTERVAL;
         self.$timer = null;
-        self.$run_mode = NONE;
+        self.$runmode = NONE;
+        self.$running = false;
         self.$queue = [ ];
         
         if ( isThread )
@@ -454,20 +482,17 @@
         }
     };
     Asynchronous.VERSION = "@@VERSION@@";
+    Asynchronous.Thread = Thread;
     Asynchronous.Task = Task;
-    Asynchronous.Field = Field;
+    //Asynchronous.Field = Field;
     Asynchronous.MODE = { NONE: NONE, INTERLEAVE: INTERLEAVED, LINEAR: LINEARISED, PARALLEL: PARALLELISED, SEQUENCE: SEQUENCED };
     Asynchronous.Platform = { UNDEFINED: UNDEFINED, UNKNOWN: UNKNOWN, NODE: NODE, BROWSER: BROWSER };
     Asynchronous.supportsMultiThreading = function( ){ return supportsMultiThread; };
-    //Asynchronous.isNode = function( ){ return isNode; };
-    //Asynchronous.isBrowser = function( ){ return isBrowser; };
     Asynchronous.isPlatform = function( platform ){ 
         if ( NODE === platform ) return isNode;
         else if ( BROWSER === platform ) return isBrowser;
         return undef; 
     };
-    //Asynchronous.isBrowserThread = function( ){ return isWebWorker; };
-    //Asynchronous.isNodeThread = function( ){ return isNodeProcess; };
     Asynchronous.isThread = function( platform ){ 
         if ( NODE === platform ) return isNodeProcess;
         else if ( BROWSER === platform ) return isWebWorker;
@@ -488,18 +513,34 @@
             /*window.*/setTimeout( callback, 1000 / 60 );
         };
     })( root );
+    // async queue as serializer
+    Asynchronous.serialize = function( queue ) {
+        queue = queue || new Asynchronous( );
+        var serialize = function( func ) {
+            var serialized = function( ) {
+                var scope = this, args = slice( arguments );
+                queue.step( function( ){ func.apply( scope, args ); } );
+                if ( !queue.$running ) queue.run( LINEARISED );
+            };
+            // free the serialized func
+            serialized.free = function( ) { return func; };
+            return serialized;
+        };
+        // free the queue
+        serialize.free = function( ) { if ( queue ) queue.dispose( ); queue = null; };
+        return serialize;
+    };
     Asynchronous.prototype = {
 
         constructor: Asynchronous
-        
-        ,VERSION: Asynchronous.VERSION
         
         ,$interval: DEFAULT_INTERVAL
         ,$timer: null
         ,$queue: null
         ,$thread: null
         ,$events: null
-        ,$run_mode: NONE
+        ,$runmode: NONE
+        ,$running: false
         
         ,dispose: function( ) {
             var self = this;
@@ -509,7 +550,8 @@
             self.$timer = null;
             self.$interval = null;
             self.$queue = null;
-            self.$run_mode = NONE;
+            self.$runmode = NONE;
+            self.$running = false;
             return self;
         }
         
@@ -518,7 +560,8 @@
             if ( self.$timer ) clearTimeout( self.$timer );
             self.$timer = null;
             self.$queue = [ ];
-            self.$run_mode = NONE;
+            self.$runmode = NONE;
+            self.$running = false;
             return self;
         }
         
@@ -530,30 +573,6 @@
             }
             return this.$interval;
         }
-        
-        /*,sources: function( ) {
-            var i, blobs = [ ], sources = slice( arguments );
-            if ( sources.length )
-            {
-                for (i=0; i<sources.length; i++)
-                {
-                    if ( 'function' === typeof( sources[ i ] ) )
-                    {
-                        blobs.push( blobURL( sources[ i ].toString( ) ) );
-                    }
-                    else
-                    {
-                        blobs.push( blobURL( sources[ i ] ) );
-                    }
-                }
-            }
-            return blobs;
-        }
-        
-        ,scripts: function( ) {
-            var scripts = slice( arguments );
-            return scripts;
-        }*/
         
         // fork a new process/thread (e.g WebWorker, NodeProcess etc..)
         ,fork: function( component, imports ) {
@@ -656,6 +675,18 @@
             else if ( 'function' === typeof(task) ) return Task( task );
         }
         
+        ,iif: Task.iif
+        
+        ,until: Task.until
+        
+        ,untilNot: Task.untilNot
+        
+        ,loop: Task.loop
+        
+        ,each: Task.each
+        
+        ,recurse: Task.recurse
+        
         ,step: function( task ) {
             var self = this;
             if ( task ) self.$queue.push( self.task( task ).queue( self ) );
@@ -670,16 +701,16 @@
         }
         
         // callback template for use as "inverted-control in-place callbacks"
-        ,jumpNext: function( offset, returnCallback ) {
+        ,jumpNext: function( returnCallback, offset ) {
             var self = this, queue = self.$queue;
             offset = offset || 0;
-            if ( true === returnCallback )
+            if ( false !== returnCallback )
             {
                 return function( ) {
                     if ( offset < queue.length )
                     {
                         if ( offset > 0 ) queue.splice( 0, offset );
-                        self.run( self.$run_mode );
+                        self.run( self.$runmode );
                     }
                     return self;
                 };
@@ -689,7 +720,33 @@
                 if ( offset < queue.length )
                 {
                     if ( offset > 0 ) queue.splice( 0, offset );
-                    self.run( self.$run_mode );
+                    self.run( self.$runmode );
+                }
+                return self;
+            }
+        }
+        
+        // callback template for use as "inverted-control in-place callbacks"
+        ,jumpNextWithArgs: function( returnCallback, offset, args ) {
+            var self = this, queue = self.$queue;
+            offset = offset || 0;
+            if ( false !== returnCallback )
+            {
+                return function( ) {
+                    if ( offset < queue.length )
+                    {
+                        if ( offset > 0 ) queue.splice( 0, offset );
+                        self.run( self.$runmode, slice(arguments) );
+                    }
+                    return self;
+                };
+            }
+            else
+            {
+                if ( offset < queue.length )
+                {
+                    if ( offset > 0 ) queue.splice( 0, offset );
+                    self.run( self.$runmode, args );
                 }
                 return self;
             }
@@ -697,7 +754,7 @@
         
         ,abort: function( returnCallback, delayed ) {
             var self = this;
-            if ( true === returnCallback )
+            if ( false !== returnCallback )
             {
                 return function( ) {
                     if ( delayed && delayed > 0 )
@@ -729,14 +786,15 @@
             }
         }
         
-        ,run: function( run_mode ) {
+        ,run: function( run_mode, args ) {
             var self = this;
-            if ( arguments.length ) self.$run_mode = run_mode;
-            else run_mode = self.$run_mode;
-            if ( SEQUENCED === run_mode ) runSequenced( self );
-            else if ( INTERLEAVED === run_mode ) runInterleaved( self );
-            else if ( LINEARISED === run_mode ) runLinearised( self );
-            else if ( PARALLELISED === run_mode ) runParallelised( self );
+            if ( arguments.length ) self.$runmode = run_mode;
+            else run_mode = self.$runmode;
+            args = args || null;
+            if ( SEQUENCED === run_mode ) runSequenced( self, args );
+            else if ( INTERLEAVED === run_mode ) runInterleaved( self, args );
+            else if ( LINEARISED === run_mode ) runLinearised( self, args );
+            else if ( PARALLELISED === run_mode ) runParallelised( self, args );
             return self;
         }
     };
