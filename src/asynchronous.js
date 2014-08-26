@@ -198,17 +198,29 @@
             return aqueue;
         };
         
-        self.jumpNext = function( offset ) { if ( aqueue ) aqueue.jumpNext( false, offset ); };
+        self.jumpNext = function( offset ) { 
+            if ( aqueue ) aqueue.jumpNext( false, offset ); 
+        };
         
         self.abort = function( dispose ) {
             if ( aqueue ) 
             {
                 aqueue.abort( false );
-                if ( dispose ) aqueue.dispose( );
+                if ( dispose ) 
+                {
+                    aqueue.dispose( );
+                    aqueue = null;
+                }
             }
         };
         
-        self.dispose = function( ) { if ( aqueue ) aqueue.dispose( ); };
+        self.dispose = function( ) { 
+            if ( aqueue ) 
+            {
+                aqueue.dispose( ); 
+                aqueue = null;
+            }
+        };
         
         self.canRun = function( ) {
             if ( !task ) return false;
@@ -228,14 +240,8 @@
         };
         
         self.iif = function( cond, if_true_task, else_task ) {
-            if ( cond )
-            {
-                task = if_true_task;
-            }
-            else if ( arguments.length > 2 )
-            {
-                task = else_task;
-            }
+            if ( cond ) task = if_true_task;
+            else if ( arguments.length > 2 ) task = else_task;
             return self;
         };
         
@@ -346,12 +352,12 @@
             return self;
         };
     };
-    Task.iif = function( ) { var args = slice(arguments), T = new Task( ); return T.iif.apply( T, args ); };
+    /*Task.iif = function( ) { var args = slice(arguments), T = new Task( ); return T.iif.apply( T, args ); };
     Task.until = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.until.apply( T, args ); };
     Task.untilNot = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.untilNot.apply( T, args ); };
     Task.loop = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.loop.apply( T, args ); };
     Task.each = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.each.apply( T, args ); };
-    Task.recurse = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.recurse.apply( T, args ); };
+    Task.recurse = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.recurse.apply( T, args ); };*/
     
     /*var Field = function( f ) {
         return new Function("o", "return o"+(f||'')+";");
@@ -456,6 +462,9 @@
     
     // manage tasks which may run in steps and tasks which are asynchronous
     var Asynchronous = exports.Asynchronous = function( interval ) {
+        // can be used as factory-constructor for both Async and Task classes
+        if ( interval instanceof Task ) return interval;
+        if ( "function"===typeof(interval) ) return new Task( interval );
         if ( !(this instanceof Asynchronous) ) return new Asynchronous( interval );
         var self = this;
         self.$interval = arguments.length ? parseInt(interval, 10) : DEFAULT_INTERVAL;
@@ -675,17 +684,35 @@
             else if ( 'function' === typeof(task) ) return Task( task );
         }
         
-        ,iif: Task.iif
+        ,iif: function( ) { 
+            var args = slice(arguments), T = new Task( ); 
+            return T.iif.apply( T, args ); 
+        }
         
-        ,until: Task.until
+        ,until: function( ) { 
+            var args = slice(arguments), T = new Task( args.pop( ) ); 
+            return T.until.apply( T, args ); 
+        }
         
-        ,untilNot: Task.untilNot
+        ,untilNot: function( ) { 
+            var args = slice(arguments), T = new Task( args.pop( ) ); 
+            return T.untilNot.apply( T, args ); 
+        }
         
-        ,loop: Task.loop
+        ,loop: function( ) { 
+            var args = slice(arguments), T = new Task( args.pop( ) ); 
+            return T.loop.apply( T, args ); 
+        }
         
-        ,each: Task.each
+        ,each: function( ) { 
+            var args = slice(arguments), T = new Task( args.pop( ) ); 
+            return T.each.apply( T, args ); 
+        }
         
-        ,recurse: Task.recurse
+        ,recurse: function( ) { 
+            var args = slice(arguments), T = new Task( args.pop( ) ); 
+            return T.recurse.apply( T, args ); 
+        }
         
         ,step: function( task ) {
             var self = this;
