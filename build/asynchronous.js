@@ -679,23 +679,7 @@
         self.$runmode = NONE;
         self.$running = false;
         self.$queue = [ ];
-        
-        if ( isThread )
-        {
-            self.$events = { };
-            onMessage(function( evt ) {
-                var event = evt.data.event, data = evt.data.data || null;
-                if ( event && self.$events[event] )
-                {
-                    self.$events[ event ]( data );
-                }
-                else if ( 'dispose' === event )
-                {
-                    self.dispose( );
-                    close( );
-                }
-            });
-        }
+        if ( isThread ) self.initThread( );
     };
     Asynchronous.VERSION = "0.4";
     Asynchronous.Thread = Thread;
@@ -729,6 +713,32 @@
             /*window.*/setTimeout( callback, 1000 / 60 );
         };
     })( root );
+    Asynchronous.load = function( component, imports, asInstance ) {
+        if ( component )
+        {
+            // do any imports if needed
+            if ( imports && imports.length )
+            {
+                imports = imports.filter( notThisPath );
+                if ( imports.length ) importScripts( imports.join( ',' ) );
+            }
+            // init the given component if needed
+            component = component.split('.'); 
+            var o = root;
+            while ( component.length )
+            {
+                if ( component[ 0 ] && component[ 0 ].length && o[ component[ 0 ] ] ) 
+                    o = o[ component[ 0 ] ];
+                component.shift( );
+            }
+            if ( o && root !== o )
+            {
+                if ( "function"===typeof(o) ) return (false !== asInstance) ? new o( ) : o( );
+                return o;
+            }
+        }
+        return null;
+    };
     // async queue as serializer
     Asynchronous.serialize = function( queue ) {
         queue = queue || new Asynchronous( );
@@ -791,7 +801,7 @@
         }
         
         // fork a new process/thread (e.g WebWorker, NodeProcess etc..)
-        ,fork: function( component, imports ) {
+        ,fork: function( component, imports, asInstance ) {
             var self = this, thread, msgLog, msgErr;
             
             if ( !self.$thread )
@@ -840,7 +850,7 @@
                         throw new Error( msgErr + evt.message + ' file: ' + evt.filename + ' line: ' + evt.lineno );
                     }
                 };
-                self.send( 'initThread', { component: component||null, imports: imports ? [].concat(imports) : null } );
+                self.send( 'initThread', { component: component||null, asInstance: false !== asInstance, imports: imports ? [].concat(imports) : null } );
             }
             return self;
         }
@@ -855,6 +865,27 @@
             self.$thread = null;
             self.$events = null;
             //if ( isThread ) close( );
+            return self;
+        }
+        
+        ,initThread: function( ) {
+            var self = this;
+            if ( isThread )
+            {
+                self.$events = { };
+                onMessage(function( evt ) {
+                    var event = evt.data.event, data = evt.data.data || null;
+                    if ( event && self.$events[event] )
+                    {
+                        self.$events[ event ]( data );
+                    }
+                    else if ( 'dispose' === event )
+                    {
+                        self.dispose( );
+                        close( );
+                    }
+                });
+            }
             return self;
         }
         
@@ -1051,32 +1082,15 @@
             switch( event )
             {
                 case 'initThread':
-                    if ( data )
+                    if ( data && data.component )
                     {
-                        // do any imports if needed
-                        if ( data.imports && data.imports.length )
+                        if ( Component )
                         {
-                            var imports = data.imports.filter( notThisPath );
-                            if ( imports.length ) importScripts( imports.join( ',' ) );
+                            // optionally call Component.dispsoe method if exists
+                            if ( 'function' === typeof(Component.dispose) ) Component.dispose( );
+                            Component = null;
                         }
-                        // init the given component if needed
-                        if ( data.component )
-                        {
-                            if ( Component )
-                            {
-                                // optionally call Component.dispsoe method if exists
-                                if ( 'function' === typeof(Component.dispose) ) Component.dispose( );
-                                Component = null;
-                            }
-                            var component = data.component.split('.'), o = root;
-                            while ( component.length )
-                            {
-                                if ( component[ 0 ] && component[ 0 ].length && o[ component[ 0 ] ] ) 
-                                    o = o[ component[ 0 ] ];
-                                component.shift( );
-                            }
-                            if ( o && root !== o ) Component = new o( );
-                        }
+                        Component = Asynchronous.load( data.component, data.imports, data.asInstance );
                     }
                     break;
                 case 'dispose':
