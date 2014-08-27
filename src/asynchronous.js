@@ -159,7 +159,7 @@
     }
     else
     {
-        Thread = Worker;
+        Thread = root.Worker;
     }
     
     // Task class/combinator
