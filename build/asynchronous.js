@@ -235,9 +235,8 @@
         ,curry = function( f, a ) { return function( ){return f(a);}; }
         
         ,URL = root.webkitURL || root.URL || null
-        ,blobURL = function( src ) {
-            if ( URL )
-                return URL.createObjectURL( new Blob( [ src || '' ], { type: "text/javascript" }) );
+        ,blobURL = function( src, type ) {
+            if ( URL ) return URL.createObjectURL( new Blob( [ src || '' ], { type: type || "text/javascript" }) );
             return src;
         }
         
@@ -268,10 +267,10 @@
             ;
         }
         
-        ,thisPath = path( )
+        ,thisPath = path( ), tpf = thisPath.file
         
-        ,notThisPath = function( path ) {
-            return !!(path && path.length && path !== thisPath.file);
+        ,notThisPath = function( p ) {
+            return !!(p && p.length && p !== tpf);
         }
     ;
     
@@ -668,7 +667,7 @@
     }
     
     // manage tasks which may run in steps and tasks which are asynchronous
-    var Asynchronous = exports.Asynchronous = function( interval ) {
+    var Asynchronous = exports.Asynchronous = function( interval, initThread ) {
         // can be used as factory-constructor for both Async and Task classes
         if ( interval instanceof Task ) return interval;
         if ( "function"===typeof(interval) ) return new Task( interval );
@@ -679,7 +678,7 @@
         self.$runmode = NONE;
         self.$running = false;
         self.$queue = [ ];
-        if ( isThread ) self.initThread( );
+        if ( isThread && (false !== initThread) ) self.initThread( );
     };
     Asynchronous.VERSION = "0.4";
     Asynchronous.Thread = Thread;
@@ -698,21 +697,24 @@
         else if ( BROWSER === platform ) return isWebWorker;
         return isThread; 
     };
-    Asynchronous.currentPath = path;
+    Asynchronous.path = path;
+    Asynchronous.blob = blobURL;
+    /*
     /**
      * Provides requestAnimationFrame in a cross browser way.
      * http://paulirish.com/2011/requestanimationframe-for-smart-animating/
-     */
+     * /
     Asynchronous.requestAnimationFrame = (function( window ) {
         return window.requestAnimationFrame ||
         window.webkitRequestAnimationFrame ||
         window.mozRequestAnimationFrame ||
         window.oRequestAnimationFrame ||
         window.msRequestAnimationFrame ||
-        function( /* function FrameRequestCallback */ callback, /* DOMElement Element */ element ) {
-            /*window.*/setTimeout( callback, 1000 / 60 );
+        function( /* function FrameRequestCallback * / callback, /* DOMElement Element * / element ) {
+            /*window.* /setTimeout( callback, 1000 / 60 );
         };
     })( root );
+    */
     Asynchronous.load = function( component, imports, asInstance ) {
         if ( component )
         {
@@ -825,7 +827,7 @@
                 }
                 
                 self.$events = self.$events || { };
-                thread = self.$thread = new Thread( thisPath.file );
+                thread = self.$thread = new Thread( tpf );
                 thread.onmessage = function( evt ) {
                     if ( evt.data.event )
                     {
