@@ -32,7 +32,7 @@ REPLACE =[{}]
 
     "@@EXPORTS@@" = "EXPORTS"
     
-    "@@VERSION@@" = "0.4"
+    "@@VERSION@@" = "0.4.1"
     
     "@@MODULE_NAME@@" = "Asynchronous"
     

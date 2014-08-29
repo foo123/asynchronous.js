@@ -1,7 +1,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4
+*   @version: 0.4.1
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -208,7 +208,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4
+*   @version: 0.4.1
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -218,16 +218,20 @@
 
     "use strict";
     
-    var FP = Function.prototype, OP = Object.prototype, AP = Array.prototype
+    var PROTO = "prototype", Obj = Object, Arr = Array, Func = Function
+        ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO]
         ,slice = FP.call.bind( AP.slice ), toString = FP.call.bind( OP.toString )
+        ,typeOf = function( v ) { return typeof(v); }, isFunction = function(f) { return "function" === typeof(f); }
+        ,is_instance = function(o, t) { return o instanceof t; }
+        ,SetTime = setTimeout, ClearTime = clearTimeout
         ,UNDEFINED = undef, UNKNOWN = 0, NODE = 1, BROWSER = 2
         ,DEFAULT_INTERVAL = 60, NONE = 0, INTERLEAVED = 1, LINEARISED = 2, PARALLELISED = 3, SEQUENCED = 4
         ,isNode = ("undefined" !== typeof( global )) && ('[object global]' === toString( global ))
         // http://nodejs.org/docs/latest/api/all.html#all_cluster
         ,isNodeProcess = !!(isNode && process.env.NODE_UNIQUE_ID)
         ,isBrowser = !isNode && ("undefined" !== typeof( navigator ))
-        ,isWebWorker = !isNode && ("function" === typeof( importScripts )) && (navigator instanceof WorkerNavigator)
-        ,supportsMultiThread = isNode || ("function" === typeof( Worker ))
+        ,isWebWorker = isBrowser && "function" === typeof( importScripts ) && is_instance(navigator, WorkerNavigator)
+        ,supportsMultiThread = isNode || "function" === typeof( Worker )
         ,isThread = isNodeProcess || isWebWorker
         ,Thread, numProcessors = isNode ? require('os').cpus( ).length : 4
         ,fromJSON = JSON.parse, toJSON = JSON.stringify ,onMessage
@@ -338,7 +342,7 @@
                 if ( self.onerror ) self.onerror( err );
             });
         };
-        Thread.prototype = {
+        Thread[PROTO] = {
             constructor: Thread,
             process: null,
             
@@ -554,7 +558,7 @@
         };
         
         self.complete = function( ) {
-            if ( onComplete && "function" === typeof(onComplete) ) onComplete( );
+            if ( onComplete && isFunction(onComplete) ) onComplete( );
             return self;
         };
     };
@@ -566,7 +570,7 @@
     Task.recurse = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.recurse.apply( T, args ); };*/
     
     /*var Field = function( f ) {
-        return new Function("o", "return o"+(f||'')+";");
+        return new Func("o", "return o"+(f||'')+";");
     };*/
     
     // run tasks in parallel threads (eg. web workers, child processes)
@@ -574,7 +578,6 @@
     { 
         scope.$runmode = PARALLELISED;
         scope.$running = false;
-        return scope;
     }
     
     // serialize async-tasks that are non-blocking/asynchronous in a quasi-sequential manner
@@ -598,7 +601,6 @@
                 self.$running = false;
             }
         }
-        return self;
     }
     
     // interleave async-tasks in background in quasi-parallel manner
@@ -632,9 +634,8 @@
                 }
             }
             self.$running = false;
-            self.$timer = setTimeout( curry( runInterleaved, self ), self.$interval );
+            self.$timer = SetTime( curry( runInterleaved, self ), self.$interval );
         }
-        return self;
     }
     
     // run tasks in a quasi-asynchronous manner (avoid blocking the thread)
@@ -661,17 +662,16 @@
                 queue.shift( );
             }
             self.$running = false;
-            self.$timer = setTimeout( curry( runSequenced, self ), self.$interval );
+            self.$timer = SetTime( curry( runSequenced, self ), self.$interval );
         }
-        return self;
     }
     
     // manage tasks which may run in steps and tasks which are asynchronous
     var Asynchronous = exports.Asynchronous = function( interval, initThread ) {
         // can be used as factory-constructor for both Async and Task classes
-        if ( interval instanceof Task ) return interval;
-        if ( "function"===typeof(interval) ) return new Task( interval );
-        if ( !(this instanceof Asynchronous) ) return new Asynchronous( interval );
+        if ( is_instance(interval, Task) ) return interval;
+        if ( isFunction(interval) ) return new Task( interval );
+        if ( !is_instance(this, Asynchronous) ) return new Asynchronous( interval );
         var self = this;
         self.$interval = arguments.length ? parseInt(interval, 10) : DEFAULT_INTERVAL;
         self.$timer = null;
@@ -680,7 +680,7 @@
         self.$queue = [ ];
         if ( isThread && (false !== initThread) ) self.initThread( );
     };
-    Asynchronous.VERSION = "0.4";
+    Asynchronous.VERSION = "0.4.1";
     Asynchronous.Thread = Thread;
     Asynchronous.Task = Task;
     //Asynchronous.Field = Field;
@@ -711,7 +711,7 @@
         window.oRequestAnimationFrame ||
         window.msRequestAnimationFrame ||
         function( /* function FrameRequestCallback * / callback, /* DOMElement Element * / element ) {
-            /*window.* /setTimeout( callback, 1000 / 60 );
+            /*window.* /SetTime( callback, 1000 / 60 );
         };
     })( root );
     */
@@ -735,7 +735,7 @@
             }
             if ( o && root !== o )
             {
-                if ( "function"===typeof(o) ) return (false !== asInstance) ? new o( ) : o( );
+                if ( isFunction(o) ) return (false !== asInstance) ? new o( ) : o( );
                 return o;
             }
         }
@@ -758,7 +758,7 @@
         serialize.free = function( ) { if ( queue ) queue.dispose( ); queue = null; };
         return serialize;
     };
-    Asynchronous.prototype = {
+    Asynchronous[PROTO] = {
 
         constructor: Asynchronous
         
@@ -773,7 +773,7 @@
         ,dispose: function( ) {
             var self = this;
             self.unfork( );
-            if ( self.$timer ) clearTimeout( self.$timer );
+            if ( self.$timer ) ClearTime( self.$timer );
             self.$thread = null;
             self.$timer = null;
             self.$interval = null;
@@ -785,7 +785,7 @@
         
         ,empty: function( ) {
             var self = this;
-            if ( self.$timer ) clearTimeout( self.$timer );
+            if ( self.$timer ) ClearTime( self.$timer );
             self.$timer = null;
             self.$queue = [ ];
             self.$runmode = NONE;
@@ -892,7 +892,7 @@
         }
         
         ,listen: function( event, handler ) {
-            if ( event && "function"===typeof(handler) && this.$events )
+            if ( event && isFunction(handler) && this.$events )
             {
                 this.$events[ event ] = handler;
             }
@@ -920,8 +920,8 @@
         }
         
         ,task: function( task ) {
-            if ( task instanceof Task ) return task;
-            else if ( 'function' === typeof(task) ) return Task( task );
+            if ( is_instance(task, Task) ) return task;
+            else if ( isFunction(task) ) return Task( task );
         }
         
         ,iif: function( ) { 
@@ -1026,7 +1026,7 @@
                 return function( ) {
                     if ( delayed && delayed > 0 )
                     {
-                        setTimeout(function( ){
+                        SetTime(function( ){
                             self.empty( );
                         }, delayed);
                     }
@@ -1041,7 +1041,7 @@
             {
                 if ( delayed && delayed > 0 )
                 {
-                    setTimeout(function( ){
+                    SetTime(function( ){
                         self.empty( );
                     }, delayed);
                 }
@@ -1089,7 +1089,7 @@
                         if ( Component )
                         {
                             // optionally call Component.dispsoe method if exists
-                            if ( 'function' === typeof(Component.dispose) ) Component.dispose( );
+                            if ( isFunction(Component.dispose) ) Component.dispose( );
                             Component = null;
                         }
                         Component = Asynchronous.load( data.component, data.imports, data.asInstance );
@@ -1100,7 +1100,7 @@
                     if ( Component )
                     {
                         // optionally call Component.dispsoe method if exists
-                        if ( 'function' === typeof(Component.dispose) ) Component.dispose( );
+                        if ( isFunction(Component.dispose) ) Component.dispose( );
                         Component = null;
                     }
                     close( );
