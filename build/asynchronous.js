@@ -195,7 +195,7 @@
     }
 
 
-}(  /* current root */          this, 
+}(  /* current root */          this.self || this, 
     /* module name */           "Asynchronous",
     /* module dependencies */   null, 
     /* module factory */        function(  ) {
