@@ -38,30 +38,16 @@
         }
         
         // Get current filename/path
-        ,path = function( ) {
-            var file = null, scripts;
+        ,path = function( ) 
+        {
+            var f;
             if ( isNode ) 
-            {
-                // http://nodejs.org/docs/latest/api/globals.html#globals_filename
-                // this should hold the current file in node
-                return { path: __dirname, file: __filename };
-            }
+                return { file: __filename, path: __dirname };
             else if ( isWebWorker )
-            {
-                // https://developer.mozilla.org/en-US/docs/Web/API/WorkerLocation
-                // this should hold the current url in a web worker
-                file = self.location.href;
-            }
-            else if ( isBrowser && (scripts = document.getElementsByTagName('script')) && scripts.length )
-            {
-                // get last script (should be the current one) in browser
-                file  = scripts[ scripts.length - 1 ].src;
-            }
-            
-            return file 
-                    ? { path: file.split('/').slice(0, -1).join('/'), file: ''+file }
-                    : { path: null, file: null }
-            ;
+                return { file: (f=self.location.href), path: f.split('/').slice(0, -1).join('/') };
+            else if ( isBrowser && (f = document.getElementsByTagName('script')) && f.length ) 
+                return { file: (f=f[f.length - 1].src), path: f.split('/').slice(0, -1).join('/') };
+            return { path: null, file: null };
         }
         
         ,thisPath = path( ), tpf = thisPath.file
