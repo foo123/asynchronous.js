@@ -7,29 +7,30 @@
 *   https://github.com/foo123/asynchronous.js
 *
 **/!function( root, name, factory ) {
-
     "use strict";
     
     //
-    // export the module, umd-style
+    // export the module, umd-style (no other dependencies)
+    var isCommonJS = ("object" === typeof(module)) && module.exports, 
+        isAMD = ("function" === typeof(define)) && define.amd, m;
     
-    // node, CommonJS, etc..
-    if ( 'object' === typeof(module) && module.exports ) 
-        module.exports = (module.deps = module.deps || {})[ name ] = module.deps[ name ] || (factory.call( root ) || 1);
+    // CommonJS, node, etc..
+    if ( isCommonJS ) 
+        module.exports = (module.$deps = module.$deps || {})[ name ] = module.$deps[ name ] || (factory.call( root, {NODE:module} ) || 1);
     
-    // AMD, etc..
-    else if ( 'function' === typeof(define) && define.amd ) define( name, [ ], function( ){ return factory.call( root ); } );
+    // AMD, requireJS, etc..
+    else if ( isAMD && ("function" === typeof(require)) && ("function" === typeof(require.specified)) && require.specified(name) ) 
+        define( name, ['require', 'exports', 'module'], function( require, exports, module ){ return factory.call( root, {AMD:module} ); } );
     
-    // browser, etc..
-    else if ( !(name in root) ) root[ name ] = factory.call( root ) || 1;
+    // browser, web worker, etc.. + AMD, other loaders
+    else if ( !(name in root) ) 
+        (root[ name ] = (m=factory.call( root, {} ) || 1)) && isAMD && define( name, [], function( ){ return m; } );
 
 
 }(  /* current root */          this, 
     /* module name */           "Asynchronous",
-    /* module factory */        function( ) {
+    /* module factory */        function( exports ) {
         
-    /* custom exports object */
-    var exports = {};
     /* main code starts here */
 
 /**
@@ -42,11 +43,10 @@
 *
 **/
 !function( root, exports, undef ) {
-
     "use strict";
     
     var PROTO = "prototype", Obj = Object, Arr = Array, Func = Function
-        ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO]
+        ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO], Keys = Obj.keys
         ,slice = FP.call.bind( AP.slice ), toString = FP.call.bind( OP.toString )
         ,typeOf = function( v ) { return typeof(v); }, isFunction = function(f) { return "function" === typeof(f); }
         ,is_instance = function(o, t) { return o instanceof t; }
@@ -58,6 +58,7 @@
         ,isNodeProcess = !!(isNode && process.env.NODE_UNIQUE_ID)
         ,isBrowser = !isNode && ("undefined" !== typeof( navigator ))
         ,isWebWorker = isBrowser && "function" === typeof( importScripts ) && is_instance(navigator, WorkerNavigator)
+        ,isAMD = "function" === typeof( define ) && define.amd
         ,supportsMultiThread = isNode || "function" === typeof( Worker )
         ,isThread = isNodeProcess || isWebWorker
         ,Thread, numProcessors = isNode ? require('os').cpus( ).length : 4
@@ -72,13 +73,15 @@
         }
         
         // Get current filename/path
-        ,path = function( ) 
+        ,path = function( amdMod ) 
         {
             var f;
             if ( isNode ) 
                 return { file: __filename, path: __dirname };
             else if ( isWebWorker )
                 return { file: (f=self.location.href), path: f.split('/').slice(0, -1).join('/') };
+            else if ( isAMD && amdMod && amdMod.uri ) 
+                return { file: (f=amdMod.uri), path: f.split('/').slice(0, -1).join('/') };
             else if ( isBrowser && (f = document.getElementsByTagName('script')) && f.length ) 
                 return { file: (f=f[f.length - 1].src), path: f.split('/').slice(0, -1).join('/') };
             return { path: null, file: null };
@@ -924,6 +927,6 @@
     
 }( this, exports );    
     /* main code ends here */
-    /* export the module "Asynchronous" */
+    /* export the module */
     return exports["Asynchronous"];
 });
