@@ -11,7 +11,7 @@
     "use strict";
     
     var PROTO = "prototype", Obj = Object, Arr = Array, Func = Function
-        ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO], Keys = Obj.keys
+        ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO]
         ,slice = FP.call.bind( AP.slice ), toString = FP.call.bind( OP.toString )
         ,typeOf = function( v ) { return typeof(v); }, isFunction = function(f) { return "function" === typeof(f); }
         ,is_instance = function(o, t) { return o instanceof t; }
@@ -38,8 +38,7 @@
         }
         
         // Get current filename/path
-        ,path = function( amdMod ) 
-        {
+        ,path = function( amdMod ) {
             var f;
             if ( isNode ) 
                 return { file: __filename, path: __dirname };
@@ -52,7 +51,7 @@
             return { path: null, file: null };
         }
         
-        ,thisPath = path( ), tpf = thisPath.file
+        ,thisPath = path( exports.AMD ), tpf = thisPath.file
         
         ,notThisPath = function( p ) {
             return !!(p && p.length && p !== tpf);
