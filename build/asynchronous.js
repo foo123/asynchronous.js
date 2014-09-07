@@ -482,7 +482,7 @@
     }
     
     // manage tasks which may run in steps and tasks which are asynchronous
-    var Asynchronous = exports.Asynchronous = function( interval, initThread ) {
+    var Asynchronous = exports['Asynchronous'] = function( interval, initThread ) {
         // can be used as factory-constructor for both Async and Task classes
         if ( is_instance(interval, Task) ) return interval;
         if ( isFunction(interval) ) return new Task( interval );
