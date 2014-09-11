@@ -1,7 +1,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4.2
+*   @version: 0.4.3
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -36,7 +36,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4.2
+*   @version: 0.4.3
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -495,7 +495,7 @@
         self.$queue = [ ];
         if ( isThread && (false !== initThread) ) self.initThread( );
     };
-    Asynchronous.VERSION = "0.4.2";
+    Asynchronous.VERSION = "0.4.3";
     Asynchronous.Thread = Thread;
     Asynchronous.Task = Task;
     //Asynchronous.Field = Field;
@@ -587,7 +587,7 @@
         
         ,dispose: function( ) {
             var self = this;
-            self.unfork( );
+            self.unfork( true );
             if ( self.$timer ) ClearTime( self.$timer );
             self.$thread = null;
             self.$timer = null;
@@ -672,12 +672,12 @@
             return self;
         }
         
-        ,unfork: function( ) {
+        ,unfork: function( explicit ) {
             var self = this;
             if ( self.$thread )
             {
                 self.send( 'dispose' );
-                //self.$thread.terminate( );
+                if ( true === explicit ) self.$thread.terminate( );
             }
             self.$thread = null;
             self.$events = null;

@@ -552,7 +552,7 @@
         
         ,dispose: function( ) {
             var self = this;
-            self.unfork( );
+            self.unfork( true );
             if ( self.$timer ) ClearTime( self.$timer );
             self.$thread = null;
             self.$timer = null;
@@ -637,12 +637,12 @@
             return self;
         }
         
-        ,unfork: function( ) {
+        ,unfork: function( explicit ) {
             var self = this;
             if ( self.$thread )
             {
                 self.send( 'dispose' );
-                //self.$thread.terminate( );
+                if ( true === explicit ) self.$thread.terminate( );
             }
             self.$thread = null;
             self.$events = null;
