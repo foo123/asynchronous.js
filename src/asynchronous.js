@@ -23,6 +23,7 @@
         ,isNodeProcess = !!(isNode && process.env.NODE_UNIQUE_ID)
         ,isBrowser = !isNode && ("undefined" !== typeof( navigator ))
         ,isWebWorker = isBrowser && "function" === typeof( importScripts ) && is_instance(navigator, WorkerNavigator)
+        ,isBrowserWindow = isBrowser && !isWebWorker && !!this.opener
         ,isAMD = "function" === typeof( define ) && define.amd
         ,supportsMultiThread = isNode || "function" === typeof( Worker )
         ,isThread = isNodeProcess || isWebWorker
@@ -56,6 +57,17 @@
         ,notThisPath = function( p ) {
             return !!(p && p.length && p !== tpf);
         }
+        
+        ,extend = function( o1, o2 ) {
+            o1 = o1 || {};
+            if ( o2 )
+            {
+                for (var k in o2) o1[ k ] = o2[ k ];
+            }
+            return o1;
+        }
+        
+        ,_uuid = 0
     ;
     
     if ( isWebWorker )
@@ -90,9 +102,8 @@
         root.close = function( ) { process.exit( ); };
         root.postMessage = function( data ) { process.send( toJSON( {data: data} ) ); };
         root.importScripts = function( scripts )  {
-            if ( scripts )
+            if ( scripts && (scripts=scripts.split(',')).length )
             {
-                scripts = scripts.split(',');
                 var i=0, src, ok;
                 while ( i < scripts.length )
                 {
@@ -151,6 +162,137 @@
     {
         Thread = root.Worker;
     }
+    
+    if ( isBrowserWindow )
+    {
+        // load javascript(s) (a)sync using <script> tags if browser (window)
+        root.importScripts = function( scripts, callback )  {
+            if ( scripts && (scripts=scripts.split(',')).length )
+            {
+                var dl = scripts.length, i, rel = /^\./, load, next, head, link;
+                head = document.getElementsByTagName("head")[ 0 ]; link = document.createElement( 'a' );
+                load = function( url, cb ) {
+                    var done = 0, script = document.createElement('script');
+                    script.type = 'text/javascript'; script.language = 'javascript';
+                    script.onload = script.onreadystatechange = function( ) {
+                        if (!done && (!script.readyState || script.readyState == 'loaded' || script.readyState == 'complete'))
+                        {
+                            done = 1; script.onload = script.onreadystatechange = null;
+                            cb( );
+                            head.removeChild( script ); script = null;
+                        }
+                    }
+                    if ( rel.test( url ) ) 
+                    {
+                        // http://stackoverflow.com/a/14781678/3591273
+                        // let the browser generate abs path
+                        link.href = base + url;
+                        url = link.protocol + "//" + link.host + link.pathname + link.search + link.hash;
+                    }
+                    // load it
+                    script.src = url; head.appendChild( script );
+                };
+                next = function next( ) {
+                    if ( ++i < dl ) load( scripts[ i ], next );
+                    else if ( callback ) callback( );
+                };
+                load( scripts[ i=0 ], next );
+            }
+            else if ( callback ) callback( );
+        }
+    }
+    
+    // Proxy to communication/asyc to another browser window
+    function formatOptions( o ) 
+    {
+        var s = [], k;
+        if ( o )
+        {
+            for (k in o) s.push( k + '=' + o[k] );
+        }
+        return s.join(",");
+    }
+    var BrowserWindow = function( options ) {
+        var self = this;
+        if ( !( self instanceof BrowserWindow) ) return new BrowserWindow( options );
+        self.$id = (++_uuid).toString( 16 );
+        self.options = extend({
+            width: 400,
+            height: 400,
+            toolbar: "no",
+            location: "no",
+            directories: "no",
+            status: "no",
+            menubar: "no",
+            scrollbars: "yes",
+            resizable: "yes"
+        }, options);
+    };
+    BrowserWindow.prototype = {
+        constructor: BrowserWindow
+        
+        ,options: null
+        ,$id: null
+        ,$window: null
+        
+        ,dispose: function( ) {
+            var self = this;
+            if ( self.$window ) self.close( );
+            self.$window = null;
+            self.$id = null;
+            self.options = null;
+            return self;
+        }
+        
+        ,close: function( ) {
+            var self = this;
+            if ( self.$window )
+            {
+                if ( !self.$window.closed ) self.$window.close( );
+                self.$window = null;
+            }
+            return self;
+        }
+        
+        ,ready: function( variable, cb ) {
+            var self = this, 
+                onWindowReady = function onWindowReady( ){
+                    if ( !self.$window || (variable && !self.$window[variable]) )
+                        setTimeout(onWindowReady, 40);
+                    else cb( );
+                };
+            setTimeout(onWindowReady, 0);
+            return self;
+        }
+        
+        ,open: function( urlOrHTML ) {
+            var self = this;
+            if ( !self.$window && !!urlOrHTML )
+            {
+                self.$window = window.open( 
+                    urlOrHTML.push // dynamic content as blob array
+                        ? blobURL(urlOrHTML[0], 'text/html;charset=utf-8')
+                        : urlOrHTML, 
+                    self.$id, 
+                    formatOptions( self.options )
+                );
+                /*if ( autoDispose )
+                {
+                    self.$window.onbeforeunload = function( ) {
+                       setTimeout(function( ){ self.dispose( ); }, 1500);
+                    };
+                }*/
+            }
+            return self;
+        }
+        
+        ,write: function( html ) {
+            var self = this;
+            if ( self.$window && html)
+                self.$window.document.write( html );
+            return self;
+        }
+    };
     
     // Task class/combinator
     var Task = function( task ) {
@@ -463,16 +605,17 @@
     Asynchronous.VERSION = "@@VERSION@@";
     Asynchronous.Thread = Thread;
     Asynchronous.Task = Task;
+    Asynchronous.BrowserWindow = BrowserWindow;
     //Asynchronous.Field = Field;
     Asynchronous.MODE = { NONE: NONE, INTERLEAVE: INTERLEAVED, LINEAR: LINEARISED, PARALLEL: PARALLELISED, SEQUENCE: SEQUENCED };
     Asynchronous.Platform = { UNDEFINED: UNDEFINED, UNKNOWN: UNKNOWN, NODE: NODE, BROWSER: BROWSER };
     Asynchronous.supportsMultiThreading = function( ){ return supportsMultiThread; };
-    Asynchronous.isPlatform = function( platform ){ 
+    Asynchronous.isPlatform = function( platform ) { 
         if ( NODE === platform ) return isNode;
         else if ( BROWSER === platform ) return isBrowser;
         return undef; 
     };
-    Asynchronous.isThread = function( platform ){ 
+    Asynchronous.isThread = function( platform ) { 
         if ( NODE === platform ) return isNodeProcess;
         else if ( BROWSER === platform ) return isWebWorker;
         return isThread; 
@@ -498,25 +641,43 @@
     Asynchronous.load = function( component, imports, asInstance ) {
         if ( component )
         {
+            var initComponent = function( ) {
+                // init the given component if needed
+                component = component.split('.'); 
+                var o = root;
+                while ( component.length )
+                {
+                    if ( component[ 0 ] && component[ 0 ].length && o[ component[ 0 ] ] ) 
+                        o = o[ component[ 0 ] ];
+                    component.shift( );
+                }
+                if ( o && root !== o )
+                {
+                    if ( isFunction(o) ) return (false !== asInstance) ? new o( ) : o( );
+                    return o;
+                }
+            };
+            
             // do any imports if needed
             if ( imports && imports.length )
             {
                 imports = imports.filter( notThisPath );
-                if ( imports.length ) importScripts( imports.join( ',' ) );
+                if ( imports.length ) 
+                {
+                    if ( isBrowserWindow ) 
+                    {
+                        importScripts( imports.join( ',' ), initComponent );
+                    }
+                    else
+                    {
+                        importScripts( imports.join( ',' ) );
+                        return initComponent( );
+                    }
+                }
             }
-            // init the given component if needed
-            component = component.split('.'); 
-            var o = root;
-            while ( component.length )
+            else
             {
-                if ( component[ 0 ] && component[ 0 ].length && o[ component[ 0 ] ] ) 
-                    o = o[ component[ 0 ] ];
-                component.shift( );
-            }
-            if ( o && root !== o )
-            {
-                if ( isFunction(o) ) return (false !== asInstance) ? new o( ) : o( );
-                return o;
+               return initComponent( );
             }
         }
         return null;
