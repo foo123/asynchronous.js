@@ -23,7 +23,7 @@
         ,isNodeProcess = !!(isNode && process.env.NODE_UNIQUE_ID)
         ,isBrowser = !isNode && ("undefined" !== typeof( navigator ))
         ,isWebWorker = isBrowser && "function" === typeof( importScripts ) && is_instance(navigator, WorkerNavigator)
-        ,isBrowserWindow = isBrowser && !isWebWorker && !!this.opener
+        ,isBrowserWindow = isBrowser && !isWebWorker && !!root.opener
         ,isAMD = "function" === typeof( define ) && define.amd
         ,supportsMultiThread = isNode || "function" === typeof( Worker )
         ,isThread = isNodeProcess || isWebWorker
@@ -33,8 +33,8 @@
         ,curry = function( f, a ) { return function( ){return f(a);}; }
         
         ,URL = root.webkitURL || root.URL || null
-        ,blobURL = function( src, type ) {
-            if ( URL ) return URL.createObjectURL( new Blob( [ src || '' ], { type: type || "text/javascript" }) );
+        ,blobURL = function( src, options ) {
+            if ( src && URL ) return URL.createObjectURL( new Blob( src.push ? src : [ src ], options || { type: "text/javascript" }) );
             return src;
         }
         
@@ -163,7 +163,7 @@
         Thread = root.Worker;
     }
     
-    if ( isBrowserWindow )
+    /*if ( isBrowserWindow )
     {
         // load javascript(s) (a)sync using <script> tags if browser (window)
         root.importScripts = function( scripts, callback )  {
@@ -200,7 +200,7 @@
             }
             else if ( callback ) callback( );
         }
-    }
+    }*/
     
     // Proxy to communication/asyc to another browser window
     function formatOptions( o ) 
@@ -270,8 +270,8 @@
             if ( !self.$window && !!urlOrHTML )
             {
                 self.$window = window.open( 
-                    urlOrHTML.push // dynamic content as blob array
-                        ? blobURL(urlOrHTML[0], 'text/html;charset=utf-8')
+                    urlOrHTML.push // dynamic content as blob array (with utf-8 BOM prepended)
+                        ? blobURL(["\ufeff"].concat(urlOrHTML), {type: 'text/html;charset=utf-8'})
                         : urlOrHTML, 
                     self.$id, 
                     formatOptions( self.options )
@@ -664,21 +664,17 @@
                 imports = imports.filter( notThisPath );
                 if ( imports.length ) 
                 {
-                    if ( isBrowserWindow ) 
+                    /*if ( isBrowserWindow ) 
                     {
                         importScripts( imports.join( ',' ), initComponent );
                     }
                     else
-                    {
+                    {*/
                         importScripts( imports.join( ',' ) );
-                        return initComponent( );
-                    }
+                    /*}*/
                 }
             }
-            else
-            {
-               return initComponent( );
-            }
+           return initComponent( );
         }
         return null;
     };
