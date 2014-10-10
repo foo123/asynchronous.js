@@ -330,31 +330,19 @@
     };
     
     // Task class/combinator
-    var Task = function( task ) {
-        if ( task instanceof Task ) return task;
-        if ( !(this instanceof Task) ) return new Task( task );
-        if ( 1 > arguments.length ) task = null;
+    var Task = function( aTask ) {
+        if ( aTask instanceof Task ) return aTask;
+        if ( !(this instanceof Task) ) return new Task( aTask );
         
-        var self = this, aqueue = null, 
+        var self = this, aqueue = null, task = null,
             onComplete = null, run_once = false,
             times = false, loop = false, recurse = false,
             until = false, untilNot = false, 
             loopObject = null, repeatCounter = 0,
             repeatIncrement = 1, repeatTimes = null,
             repeatUntil = null, repeatUntilNot = null,
-            lastResult = undef,
-        
-            run = function( ) {
-                lastResult = task( self );
-                run_once = true;
-                return lastResult;
-            }
+            lastResult = undef, run
         ;
-        
-        self.task = function( t ) {
-            task = t;
-            return self;
-        };
         
         self.queue = function( q ) {
             if ( arguments.length )
@@ -389,6 +377,43 @@
             }
         };
         
+        self.task = function( t ) {
+            task = t;
+            /*task.jumpNext = self.jumpNext;
+            task.abort = self.abort;
+            task.dispose = self.dispose;*/
+            return self;
+        };
+        
+        if ( aTask ) self.task( aTask );
+        
+        self.run = run = function( ) {
+            // add queue/task methods on task func itself
+            // instead of passing "this" as task param
+            // use task as "nfe" or "arguments.callee" or whatelse,
+            task.jumpNext = self.jumpNext;
+            task.abort = self.abort;
+            task.dispose = self.dispose;
+            lastResult = task( /*self*/ );
+            run_once = true;
+            task.jumpNext = null;
+            task.abort = null;
+            task.dispose = null;
+            return lastResult;
+        };
+        
+        self.runWithArgs = function( args ) {
+            task.jumpNext = self.jumpNext;
+            task.abort = self.abort;
+            task.dispose = self.dispose;
+            lastResult = task.apply( null, args );
+            run_once = true;
+            task.jumpNext = null;
+            task.abort = null;
+            task.dispose = null;
+            return lastResult;
+        };
+        
         self.canRun = function( ) {
             if ( !task ) return false;
             if ( run_once && !times && !loop && !recurse && !until && !untilNot ) return false;
@@ -398,17 +423,9 @@
             return true;
         };
         
-        self.run = run;
-        
-        self.runWithArgs = function( args ) {
-            lastResult = task.apply( null, args );
-            run_once = true;
-            return lastResult;
-        };
-        
         self.iif = function( cond, if_true_task, else_task ) {
-            if ( cond ) task = if_true_task;
-            else if ( arguments.length > 2 ) task = else_task;
+            if ( cond ) self.task( if_true_task );
+            else if ( arguments.length > 2 ) self.task( else_task );
             return self;
         };
         
@@ -519,7 +536,7 @@
             return self;
         };
     };
-    /*Task.iif = function( ) { var args = slice(arguments), T = new Task( ); return T.iif.apply( T, args ); };
+    /*Task.iif = function( ) { var args = arguments, T = new Task( ); return T.iif.apply( T, args ); };
     Task.until = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.until.apply( T, args ); };
     Task.untilNot = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.untilNot.apply( T, args ); };
     Task.loop = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.loop.apply( T, args ); };
@@ -718,7 +735,7 @@
         queue = queue || new Asynchronous( );
         var serialize = function( func ) {
             var serialized = function( ) {
-                var scope = this, args = slice( arguments );
+                var scope = this, args = arguments;
                 queue.step( function( ){ func.apply( scope, args ); } );
                 if ( !queue.$running ) queue.run( LINEARISED );
             };
@@ -897,7 +914,7 @@
         }
         
         ,iif: function( ) { 
-            var args = slice(arguments), T = new Task( ); 
+            var args = arguments, T = new Task( ); 
             return T.iif.apply( T, args ); 
         }
         
@@ -933,7 +950,7 @@
         }
         
         ,steps: function( ) {
-            var self = this, tasks = slice( arguments ), i, l;
+            var self = this, tasks = arguments, i, l;
             l = tasks.length;
             for (i=0; i<l; i++) self.step( tasks[ i ] );
             return self;
@@ -975,7 +992,7 @@
                     if ( offset < queue.length )
                     {
                         if ( offset > 0 ) queue.splice( 0, offset );
-                        self.run( self.$runmode, slice(arguments) );
+                        self.run( self.$runmode, arguments );
                     }
                     return self;
                 };
