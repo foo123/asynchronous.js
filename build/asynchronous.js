@@ -1,7 +1,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4.4
+*   @version: 0.4.5
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -36,7 +36,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4.4
+*   @version: 0.4.5
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -45,19 +45,20 @@
 !function( root, exports, undef ) {
     "use strict";
     
-    var PROTO = "prototype", Obj = Object, Arr = Array, Func = Function
+    var PROTO = "prototype", HAS = 'hasOwnProperty'
+        ,Obj = Object, Arr = Array, Func = Function
         ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO]
-        ,slice = FP.call.bind( AP.slice ), toString = FP.call.bind( OP.toString )
-        ,typeOf = function( v ) { return typeof(v); }, isFunction = function(f) { return "function" === typeof(f); }
-        ,is_instance = function(o, t) { return o instanceof t; }
+        ,slice = FP.call.bind( AP.slice ), toString = OP.toString
+        ,is_function = function(f) { return "function" === typeof f; }
+        ,is_instance = function(o, t) {return o instanceof t;}
         ,SetTime = setTimeout, ClearTime = clearTimeout
         ,UNDEFINED = undef, UNKNOWN = 0, NODE = 1, BROWSER = 2
         ,DEFAULT_INTERVAL = 60, NONE = 0, INTERLEAVED = 1, LINEARISED = 2, PARALLELISED = 3, SEQUENCED = 4
-        ,isNode = ("undefined" !== typeof( global )) && ('[object global]' === toString( global ))
+        ,isNode = ("undefined" !== typeof global) && ('[object global]' === toString.call(global))
         // http://nodejs.org/docs/latest/api/all.html#all_cluster
         ,isNodeProcess = !!(isNode && process.env.NODE_UNIQUE_ID)
-        ,isBrowser = !isNode && ("undefined" !== typeof( navigator ))
-        ,isWebWorker = isBrowser && "function" === typeof( importScripts ) && is_instance(navigator, WorkerNavigator)
+        ,isBrowser = !isNode && ("undefined" !== typeof navigator)
+        ,isWebWorker = isBrowser && "function" === typeof importScripts && is_instance(navigator, WorkerNavigator)
         ,isBrowserWindow = isBrowser && !isWebWorker && !!root.opener
         ,isAMD = "function" === typeof( define ) && define.amd
         ,supportsMultiThread = isNode || "function" === typeof( Worker )
@@ -65,7 +66,7 @@
         ,Thread, numProcessors = isNode ? require('os').cpus( ).length : 4
         ,fromJSON = JSON.parse, toJSON = JSON.stringify ,onMessage
         
-        ,curry = function( f, a ) { return function( ){return f(a);}; }
+        ,curry = function( f, a ){return function( ){return f(a);};}
         
         ,URL = root.webkitURL || root.URL || null
         ,blobURL = function( src, options ) {
@@ -97,7 +98,8 @@
             o1 = o1 || {};
             if ( o2 )
             {
-                for (var k in o2) o1[ k ] = o2[ k ];
+                for (var k in o2) 
+                    if ( o2[HAS](k) ) o1[ k ] = o2[ k ];
             }
             return o1;
         }
@@ -198,45 +200,6 @@
         Thread = root.Worker;
     }
     
-    /*if ( isBrowserWindow )
-    {
-        // load javascript(s) (a)sync using <script> tags if browser (window)
-        root.importScripts = function( scripts, callback )  {
-            if ( scripts && (scripts=scripts.split(',')).length )
-            {
-                var dl = scripts.length, i, rel = /^\./, load, next, head, link;
-                head = document.getElementsByTagName("head")[ 0 ]; link = document.createElement( 'a' );
-                load = function( url, cb ) {
-                    var done = 0, script = document.createElement('script');
-                    script.type = 'text/javascript'; script.language = 'javascript';
-                    script.onload = script.onreadystatechange = function( ) {
-                        if (!done && (!script.readyState || script.readyState == 'loaded' || script.readyState == 'complete'))
-                        {
-                            done = 1; script.onload = script.onreadystatechange = null;
-                            cb( );
-                            head.removeChild( script ); script = null;
-                        }
-                    }
-                    if ( rel.test( url ) ) 
-                    {
-                        // http://stackoverflow.com/a/14781678/3591273
-                        // let the browser generate abs path
-                        link.href = base + url;
-                        url = link.protocol + "//" + link.host + link.pathname + link.search + link.hash;
-                    }
-                    // load it
-                    script.src = url; head.appendChild( script );
-                };
-                next = function next( ) {
-                    if ( ++i < dl ) load( scripts[ i ], next );
-                    else if ( callback ) callback( );
-                };
-                load( scripts[ i=0 ], next );
-            }
-            else if ( callback ) callback( );
-        }
-    }*/
-    
     // Proxy to communication/asyc to another browser window
     function formatOptions( o ) 
     {
@@ -263,7 +226,7 @@
             resizable: "yes"
         }, options);
     };
-    BrowserWindow.prototype = {
+    BrowserWindow[PROTO] = {
         constructor: BrowserWindow
         
         ,options: null
@@ -379,9 +342,6 @@
         
         self.task = function( t ) {
             task = t;
-            /*task.jumpNext = self.jumpNext;
-            task.abort = self.abort;
-            task.dispose = self.dispose;*/
             return self;
         };
         
@@ -532,20 +492,10 @@
         };
         
         self.complete = function( ) {
-            if ( onComplete && isFunction(onComplete) ) onComplete( );
+            if ( onComplete && is_function(onComplete) ) onComplete( );
             return self;
         };
     };
-    /*Task.iif = function( ) { var args = arguments, T = new Task( ); return T.iif.apply( T, args ); };
-    Task.until = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.until.apply( T, args ); };
-    Task.untilNot = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.untilNot.apply( T, args ); };
-    Task.loop = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.loop.apply( T, args ); };
-    Task.each = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.each.apply( T, args ); };
-    Task.recurse = function( ) { var args = slice(arguments), T = new Task( args.pop() ); return T.recurse.apply( T, args ); };*/
-    
-    /*var Field = function( f ) {
-        return new Func("o", "return o"+(f||'')+";");
-    };*/
     
     // run tasks in parallel threads (eg. web workers, child processes)
     function runParallelised( scope, args ) 
@@ -644,7 +594,7 @@
     var Asynchronous = exports['Asynchronous'] = function( interval, initThread ) {
         // can be used as factory-constructor for both Async and Task classes
         if ( is_instance(interval, Task) ) return interval;
-        if ( isFunction(interval) ) return new Task( interval );
+        if ( is_function(interval) ) return new Task( interval );
         if ( !is_instance(this, Asynchronous) ) return new Asynchronous( interval );
         var self = this;
         self.$interval = arguments.length ? parseInt(interval, 10) : DEFAULT_INTERVAL;
@@ -654,11 +604,10 @@
         self.$queue = [ ];
         if ( isThread && (false !== initThread) ) self.initThread( );
     };
-    Asynchronous.VERSION = "0.4.4";
+    Asynchronous.VERSION = "0.4.5";
     Asynchronous.Thread = Thread;
     Asynchronous.Task = Task;
     Asynchronous.BrowserWindow = BrowserWindow;
-    //Asynchronous.Field = Field;
     Asynchronous.MODE = { NONE: NONE, INTERLEAVE: INTERLEAVED, LINEAR: LINEARISED, PARALLEL: PARALLELISED, SEQUENCE: SEQUENCED };
     Asynchronous.Platform = { UNDEFINED: UNDEFINED, UNKNOWN: UNKNOWN, NODE: NODE, BROWSER: BROWSER };
     Asynchronous.supportsMultiThreading = function( ){ return supportsMultiThread; };
@@ -705,7 +654,7 @@
                 }
                 if ( o && root !== o )
                 {
-                    if ( isFunction(o) ) return (false !== asInstance) ? new o( ) : o( );
+                    if ( is_function(o) ) return (false !== asInstance) ? new o( ) : o( );
                     return o;
                 }
             };
@@ -881,7 +830,7 @@
         }
         
         ,listen: function( event, handler ) {
-            if ( event && isFunction(handler) && this.$events )
+            if ( event && is_function(handler) && this.$events )
             {
                 this.$events[ event ] = handler;
             }
@@ -910,7 +859,7 @@
         
         ,task: function( task ) {
             if ( is_instance(task, Task) ) return task;
-            else if ( isFunction(task) ) return Task( task );
+            else if ( is_function(task) ) return Task( task );
         }
         
         ,iif: function( ) { 
@@ -1078,7 +1027,7 @@
                         if ( Component )
                         {
                             // optionally call Component.dispsoe method if exists
-                            if ( isFunction(Component.dispose) ) Component.dispose( );
+                            if ( is_function(Component.dispose) ) Component.dispose( );
                             Component = null;
                         }
                         Component = Asynchronous.load( data.component, data.imports, data.asInstance );
@@ -1089,7 +1038,7 @@
                     if ( Component )
                     {
                         // optionally call Component.dispsoe method if exists
-                        if ( isFunction(Component.dispose) ) Component.dispose( );
+                        if ( is_function(Component.dispose) ) Component.dispose( );
                         Component = null;
                     }
                     close( );
