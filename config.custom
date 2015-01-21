@@ -34,7 +34,7 @@ tasks =[{}]
         out = ./build/asynchronous.js
     @
     
-    minify ={}
+    minify =[{}]
         
         src =[]
             ./build/asynchronous.js
