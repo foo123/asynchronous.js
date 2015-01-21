@@ -8,14 +8,15 @@
 #define 2 tasks to execute in order
 tasks =[{}]
     
-    build ={} 
+    build =[{}]
+        
         src =[]
             
             !tpl:umd-header-single.tpl.js  # include a umd-header template
             ./src/asynchronous.js
             !tpl:umd-footer.tpl.js  # include a umd-footer template
             
-        @ # end block
+        @
 
         # extract header from this file
         header = ./src/asynchronous.js
@@ -28,37 +29,38 @@ tasks =[{}]
             "@@VERSION@@" = "0.4.5"
             "@@MODULE_NAME@@" = "Asynchronous"
             
-        @ # end block
+        @
 
         out = ./build/asynchronous.js
-    @ # end block
+    @
     
     minify ={}
+        
         src =[]
             ./build/asynchronous.js
-        @ # end block
+        @
 
         # Minify the Package (map of lists)
         minify ={}
 
             # Options for Node UglifyJS Compiler (if used, default), (mangle and compress)
-            "uglifyjs" =[]
+            uglifyjs =[]
                 -m -c
-            @ # end block
+            @
 
             # Options for Java Closure Compiler (if used)
-            "closure" =[]
+            closure =[]
                 "--language_in=ECMASCRIPT5_STRICT"
-            @ # end block
+            @
 
             # Options for Java YUI Compressor Compiler (if used)
-            "yui" =[]
+            yui =[]
                 --preserve-semi
-            @ # end block
+            @
 
-        @ # end block
+        @
 
         out = ./build/asynchronous.min.js
-    @ # end block
+    @
     
-@ # end block
+@
