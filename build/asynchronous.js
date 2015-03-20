@@ -68,7 +68,7 @@
         
         ,curry = function( f, a ){return function( ){return f(a);};}
         
-        ,URL = root.webkitURL || root.URL || null
+        ,URL = 'undefined' !== typeof root.webkitURL ? root.webkitURL : ('undefined' !== typeof root.URL ? root.URL : null)
         ,blobURL = function( src, options ) {
             if ( src && URL ) return URL.createObjectURL( new Blob( src.push ? src : [ src ], options || { type: "text/javascript" }) );
             return src;
