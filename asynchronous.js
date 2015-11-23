@@ -1,7 +1,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4.6
+*   @version: 0.4.7
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -9,23 +9,15 @@
 **/
 !function( root, name, factory ) {
 "use strict";
-
-// export the module, umd-style (no other dependencies)
-var isCommonJS = ("object" === typeof(module)) && module.exports, 
-    isAMD = ("function" === typeof(define)) && define.amd, m;
-
-// CommonJS, node, etc..
-if ( isCommonJS ) 
-    module.exports = (module.$deps = module.$deps || {})[ name ] = module.$deps[ name ] || (factory.call( root, {NODE:module} ) || 1);
-
-// AMD, requireJS, etc..
-else if ( isAMD && ("function" === typeof(require)) && ("function" === typeof(require.specified)) && require.specified(name) ) 
-    define( name, ['require', 'exports', 'module'], function( require, exports, module ){ return factory.call( root, {AMD:module} ); } );
-
-// browser, web worker, etc.. + AMD, other loaders
-else if ( !(name in root) ) 
-    (root[ name ] = (m=factory.call( root, {} ) || 1)) && isAMD && define( name, [], function( ){ return m; } );
-
+var m;
+if ( ('undefined'!==typeof Components)&&('object'===typeof Components.classes)&&('object'===typeof Components.classesByID)&&Components.utils&&('function'===typeof Components.utils['import']) ) /* XPCOM */
+    (root.EXPORTED_SYMBOLS = [ name ]) && (root[ name ] = factory.call( root,{XPCOM:root} ));
+else if ( ('object'===typeof module)&&module.exports ) /* CommonJS */
+    module.exports = (module.$deps = module.$deps || {})[ name ] = module.$deps[ name ] || (factory.call( root,{NODE:module} ) || 1);
+else if ( ('function'===typeof(define))&&define.amd&&('function'===typeof(require))&&('function'===typeof(require.specified))&&require.specified(name) ) /* AMD */
+    define(name,['require','exports','module'],function( ){return factory.call( root,{AMD:module} );});
+else if ( !(name in root) ) /* Browser/WebWorker/.. */
+    (root[ name ] = (m=factory.call( root,{} )))&&('function'===typeof(define))&&define.amd&&define(function( ){return m;} );
 }(  /* current root */          this, 
     /* module name */           "Asynchronous",
     /* module factory */        function( exports, undef ) {
@@ -40,11 +32,12 @@ var  PROTO = "prototype", HAS = 'hasOwnProperty'
     ,SetTime = setTimeout, ClearTime = clearTimeout
     ,UNDEFINED = undef, UNKNOWN = 0, NODE = 1, BROWSER = 2
     ,DEFAULT_INTERVAL = 60, NONE = 0, INTERLEAVED = 1, LINEARISED = 2, PARALLELISED = 3, SEQUENCED = 4
+    ,isXPCOM = ("undefined" !== typeof Components) && ("object" === typeof Components.classes) && ("object" === typeof Components.classesByID) && Components.utils && ("function" === typeof Components.utils['import'])
     ,isNode = ("undefined" !== typeof global) && ('[object global]' === toString.call(global))
     // http://nodejs.org/docs/latest/api/all.html#all_cluster
     ,isNodeProcess = isNode && !!process.env.NODE_UNIQUE_ID
-    ,isWebWorker = !isNode && ('undefined' !== typeof WorkerGlobalScope) && ("function" === typeof importScripts) && (navigator instanceof WorkerNavigator)
-    ,isBrowser = !isNode && !isWebWorker && ("undefined" !== typeof navigator) && ("undefined" !== typeof document)
+    ,isWebWorker = !isXPCOM && !isNode && ('undefined' !== typeof WorkerGlobalScope) && ("function" === typeof importScripts) && (navigator instanceof WorkerNavigator)
+    ,isBrowser = !isXPCOM && !isNode && !isWebWorker && ("undefined" !== typeof navigator) && ("undefined" !== typeof document)
     ,isBrowserWindow = isBrowser && !!root.opener
     ,isAMD = "function" === typeof( define ) && define.amd
     ,supportsMultiThread = isNode || "function" === typeof Worker
@@ -603,7 +596,7 @@ var Asynchronous = function Asynchronous( interval, initThread ) {
     self.$queue = [ ];
     if ( isThread && (false !== initThread) ) self.initThread( );
 };
-Asynchronous.VERSION = "0.4.6";
+Asynchronous.VERSION = "0.4.7";
 Asynchronous.Thread = Thread;
 Asynchronous.Task = Task;
 Asynchronous.BrowserWindow = BrowserWindow;
