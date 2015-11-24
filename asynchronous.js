@@ -39,6 +39,7 @@ var  PROTO = "prototype", HAS = 'hasOwnProperty'
     ,isWebWorker = !isXPCOM && !isNode && ('undefined' !== typeof WorkerGlobalScope) && ("function" === typeof importScripts) && (navigator instanceof WorkerNavigator)
     ,isBrowser = !isXPCOM && !isNode && !isWebWorker && ("undefined" !== typeof navigator) && ("undefined" !== typeof document)
     ,isBrowserWindow = isBrowser && !!root.opener
+    ,isBrowserFrame = isBrowser && (window.self !== window.top)
     ,isAMD = "function" === typeof( define ) && define.amd
     ,supportsMultiThread = isNode || "function" === typeof Worker
     ,isThread = isNodeProcess || isWebWorker
