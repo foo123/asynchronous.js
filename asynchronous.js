@@ -23,7 +23,7 @@ else if ( !(name in root) ) /* Browser/WebWorker/.. */
     /* module factory */        function( exports, undef ) {
 "use strict";
 
-var  PROTO = "prototype", HAS = 'hasOwnProperty'
+var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
     ,Obj = Object, Arr = Array, Func = Function
     ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO]
     ,slice = FP.call.bind( AP.slice ), toString = OP.toString
