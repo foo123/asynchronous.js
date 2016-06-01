@@ -1,7 +1,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.4.7
+*   @version: 0.4.8
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -36,15 +36,16 @@ var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
     ,isNode = ("undefined" !== typeof global) && ('[object global]' === toString.call(global))
     // http://nodejs.org/docs/latest/api/all.html#all_cluster
     ,isNodeProcess = isNode && !!process.env.NODE_UNIQUE_ID
+    ,isSharedWorker = !isXPCOM && !isNode && ('undefined' !== typeof SharedWorkerGlobalScope) && ("function" === typeof importScripts)
     ,isWebWorker = !isXPCOM && !isNode && ('undefined' !== typeof WorkerGlobalScope) && ("function" === typeof importScripts) && (navigator instanceof WorkerNavigator)
-    ,isBrowser = !isXPCOM && !isNode && !isWebWorker && ("undefined" !== typeof navigator) && ("undefined" !== typeof document)
+    ,isBrowser = !isXPCOM && !isNode && !isWebWorker && !isSharedWorker && ("undefined" !== typeof navigator) && ("undefined" !== typeof document)
     ,isBrowserWindow = isBrowser && !!root.opener
     ,isBrowserFrame = isBrowser && (window.self !== window.top)
     ,isAMD = "function" === typeof( define ) && define.amd
-    ,supportsMultiThread = isNode || "function" === typeof Worker
-    ,isThread = isNodeProcess || isWebWorker
+    ,supportsMultiThread = isNode || ("function" === typeof Worker) || ("function" === typeof SharedWorker)
+    ,isThread = isNodeProcess || isSharedWorker || isWebWorker
     ,Thread, numProcessors = isNode ? require('os').cpus( ).length : 4
-    ,fromJSON = JSON.parse, toJSON = JSON.stringify ,onMessage
+    ,fromJSON = JSON.parse, toJSON = JSON.stringify ,onMessage, shared_port
     
     ,curry = function( f, a ){return function( ){return f(a);};}
     
@@ -61,7 +62,7 @@ var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
         {
             return { file: __filename, path: __dirname };
         }
-        else if ( isWebWorker )
+        else if ( isSharedWorker || isWebWorker )
         {
             return { file: (f=self.location.href), path: f.split('/').slice(0, -1).join('/') };
         }
@@ -98,7 +99,35 @@ var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
     ,_uuid = 0
 ;
 
-if ( isWebWorker )
+if ( isSharedWorker )
+{
+    root.close = function( ) { };
+    root.postMessage = function( data ) { };
+    onMessage = function onMessage( handler ) {
+        if ( !!shared_port )
+        {
+            if ( handler )
+                shared_port.addEventListener('message', handler);
+            onMessage.handler = null;
+        }
+        else if ( handler )
+        {
+            onMessage.handler = handler;
+        }
+    };
+    onconnect = function( e ) {
+        shared_port = e.ports[0];
+        root.close = function( ) { shared_port.close( ); };
+        root.postMessage = function( data ) { shared_port.postMessage( data ); };
+        if ( onMessage.handler )
+        {
+            shared_port.addEventListener('message', onMessage.handler);
+            onMessage.handler = null;
+        }
+        shared_port.start( ); // Required when using addEventListener. Otherwise called implicitly by onmessage setter.
+    };
+}
+else if ( isWebWorker )
 {
     onMessage = function( handler ) {
         if ( handler )
@@ -161,6 +190,7 @@ if ( isNode )
             if ( self.onerror ) self.onerror( err );
         });
     };
+    Thread.Shared = Thread;
     Thread[PROTO] = {
         constructor: Thread,
         process: null,
@@ -188,7 +218,79 @@ if ( isNode )
 }
 else
 {
-    Thread = root.Worker;
+    Thread = function( path ){
+        var self = this;
+        self.process = new Worker( path );
+        self.process.onmessage = function( e ) {
+            if ( self.onmessage ) self.onmessage( e );
+        };
+        self.process.onerror = function( e ) {
+            if ( self.onerror ) self.onerror( e );
+        };
+    };
+    Thread.Shared = Thread;
+    Thread[PROTO] = {
+        constructor: Thread,
+        process: null,
+        
+        onmessage: null,
+        onerror: null,
+
+        postMessage: function( data ) {
+            if ( this.process )
+            {
+                this.process.postMessage( data );
+            }
+            return this;
+        },
+
+        terminate: function( ) {
+            if ( this.process )
+            {
+                this.process.terminate( );
+                this.process = null;
+            }
+            return this;
+        }
+    };
+    if ( "function" === typeof SharedWorker )
+    {
+        Thread.Shared = function( path ){
+            var self = this;
+            self.process = new SharedWorker( path );
+            self.process.port.start( );
+            self.process.port.onmessage = function( e ) {
+                if ( self.onmessage ) self.onmessage( e );
+            };
+            self.process.port.onerror = self.process.onerror = function( e ) {
+                if ( self.onerror ) self.onerror( e );
+            };
+        };
+        Thread.Shared[PROTO] = {
+            constructor: Thread.Shared,
+            process: null,
+            
+            onmessage: null,
+            onerror: null,
+
+            postMessage: function( data ) {
+                if ( this.process )
+                {
+                    this.process.port.postMessage( data );
+                }
+                return this;
+            },
+
+            terminate: function( ) {
+                if ( this.process )
+                {
+                    this.process.port.close( );
+                    this.process = null;
+                }
+                return this;
+            }
+        };
+    }
 }
 
 // Proxy to communication/asyc to another browser window
@@ -597,7 +699,7 @@ var Asynchronous = function Asynchronous( interval, initThread ) {
     self.$queue = [ ];
     if ( isThread && (false !== initThread) ) self.initThread( );
 };
-Asynchronous.VERSION = "0.4.7";
+Asynchronous.VERSION = "0.4.8";
 Asynchronous.Thread = Thread;
 Asynchronous.Task = Task;
 Asynchronous.BrowserWindow = BrowserWindow;
@@ -611,7 +713,7 @@ Asynchronous.isPlatform = function( platform ) {
 };
 Asynchronous.isThread = function( platform ) { 
     if ( NODE === platform ) return isNodeProcess;
-    else if ( BROWSER === platform ) return isWebWorker;
+    else if ( BROWSER === platform ) return isSharedWorker || isWebWorker;
     return isThread; 
 };
 Asynchronous.path = path;
@@ -734,7 +836,7 @@ Asynchronous[PROTO] = {
     }
     
     // fork a new process/thread (e.g WebWorker, NodeProcess etc..)
-    ,fork: function( component, imports, asInstance ) {
+    ,fork: function( component, imports, asInstance, shared ) {
         var self = this, thread, msgLog, msgErr;
         
         if ( !self.$thread )
@@ -758,7 +860,7 @@ Asynchronous[PROTO] = {
             }
             
             self.$events = self.$events || { };
-            thread = self.$thread = new Thread( tpf );
+            thread = self.$thread = true === shared ? new Thread.Shared( tpf ) : new Thread( tpf );
             thread.onmessage = function( evt ) {
                 if ( evt.data.event )
                 {

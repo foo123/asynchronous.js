@@ -1,7 +1,7 @@
 Asynchronous.js
 ===============
 
-A simple, light-weight (~10kB minified) manager for async, linearised, parallelised, interleaved and sequential tasks for JavaScript
+A simple, light-weight (~10kB minified) manager for async, linearised, parallelised, interleaved and sequential tasks for JavaScript (Node/XPCOM/Browser/WebWorker/SharedWorker)
 
 ![Asynchronous](/asynchronous.jpg)
 
