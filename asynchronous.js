@@ -7,23 +7,24 @@
 *   https://github.com/foo123/asynchronous.js
 *
 **/
-!function( root, name, factory ) {
+!function( root, name, factory ){
 "use strict";
-var m;
 if ( ('undefined'!==typeof Components)&&('object'===typeof Components.classes)&&('object'===typeof Components.classesByID)&&Components.utils&&('function'===typeof Components.utils['import']) ) /* XPCOM */
-    (root.EXPORTED_SYMBOLS = [ name ]) && (root[ name ] = factory.call( root,{XPCOM:root} ));
+    (root.$deps = root.$deps||{}) && (root.EXPORTED_SYMBOLS = [name]) && (root[name] = root.$deps[name] = factory.call(root));
 else if ( ('object'===typeof module)&&module.exports ) /* CommonJS */
-    module.exports = (module.$deps = module.$deps || {})[ name ] = module.$deps[ name ] || (factory.call( root,{NODE:module} ) || 1);
-else if ( ('function'===typeof(define))&&define.amd&&('function'===typeof(require))&&('function'===typeof(require.specified))&&require.specified(name) ) /* AMD */
-    define(name,['require','exports','module'],function( ){return factory.call( root,{AMD:module} );});
+    (module.$deps = module.$deps||{}) && (module.exports = module.$deps[name] = factory.call(root));
+else if ( ('undefined'!==typeof System)&&('function'===typeof System.register)&&('function'===typeof System['import']) ) /* ES6 module */
+    System.register(name,[],function($__export){$__export(name, factory.call(root));});
+else if ( ('function'===typeof define)&&define.amd&&('function'===typeof require)&&('function'===typeof require.specified)&&require.specified(name) /*&& !require.defined(name)*/ ) /* AMD */
+    define(name,['module'],function(module){factory.moduleUri = module.uri; return factory.call(root);});
 else if ( !(name in root) ) /* Browser/WebWorker/.. */
-    (root[ name ] = (m=factory.call( root,{} )))&&('function'===typeof(define))&&define.amd&&define(function( ){return m;} );
+    (root[name] = factory.call(root)||1)&&('function'===typeof(define))&&define.amd&&define(function(){return root[name];} );
 }(  /* current root */          this, 
     /* module name */           "Asynchronous",
-    /* module factory */        function( exports, undef ) {
+    /* module factory */        function ModuleFactory__Asynchronous( undef ){
 "use strict";
 
-var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
+var  root = this, PROTO = "prototype", HAS = "hasOwnProperty"
     ,Obj = Object, Arr = Array, Func = Function
     ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO]
     ,slice = FP.call.bind( AP.slice ), toString = OP.toString
@@ -32,16 +33,16 @@ var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
     ,SetTime = setTimeout, ClearTime = clearTimeout
     ,UNDEFINED = undef, UNKNOWN = 0, NODE = 1, BROWSER = 2
     ,DEFAULT_INTERVAL = 60, NONE = 0, INTERLEAVED = 1, LINEARISED = 2, PARALLELISED = 3, SEQUENCED = 4
-    ,isXPCOM = ("undefined" !== typeof Components) && ("object" === typeof Components.classes) && ("object" === typeof Components.classesByID) && Components.utils && ("function" === typeof Components.utils['import'])
-    ,isNode = ("undefined" !== typeof global) && ('[object global]' === toString.call(global))
+    ,isXPCOM = ("undefined" !== typeof Components) && ("object" === typeof Components.classes) && ("object" === typeof Components.classesByID) && Components.utils && ("function" === typeof Components.utils["import"])
+    ,isNode = ("undefined" !== typeof global) && ("[object global]" === toString.call(global))
     // http://nodejs.org/docs/latest/api/all.html#all_cluster
     ,isNodeProcess = isNode && !!process.env.NODE_UNIQUE_ID
     ,isSharedWorker = !isXPCOM && !isNode && ('undefined' !== typeof SharedWorkerGlobalScope) && ("function" === typeof importScripts)
-    ,isWebWorker = !isXPCOM && !isNode && ('undefined' !== typeof WorkerGlobalScope) && ("function" === typeof importScripts) && (navigator instanceof WorkerNavigator)
+    ,isWebWorker = !isXPCOM && !isNode && ("undefined" !== typeof WorkerGlobalScope) && ("function" === typeof importScripts) && (navigator instanceof WorkerNavigator)
     ,isBrowser = !isXPCOM && !isNode && !isWebWorker && !isSharedWorker && ("undefined" !== typeof navigator) && ("undefined" !== typeof document)
     ,isBrowserWindow = isBrowser && !!root.opener
     ,isBrowserFrame = isBrowser && (window.self !== window.top)
-    ,isAMD = "function" === typeof( define ) && define.amd
+    ,isAMD = ("function" === typeof define ) && define.amd
     ,supportsMultiThread = isNode || ("function" === typeof Worker) || ("function" === typeof SharedWorker)
     ,isThread = isNodeProcess || isSharedWorker || isWebWorker
     ,Thread, numProcessors = isNode ? require('os').cpus( ).length : 4
@@ -56,7 +57,7 @@ var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
     }
     
     // Get current filename/path
-    ,path = function path( amdMod ) {
+    ,path = function path( moduleUri ) {
         var f;
         if ( isNode )
         {
@@ -66,9 +67,9 @@ var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
         {
             return { file: (f=self.location.href), path: f.split('/').slice(0, -1).join('/') };
         }
-        else if ( isAMD && amdMod && amdMod.uri )
+        else if ( isAMD && moduleUri )
         {
-            return { file: (f=amdMod.uri), path: f.split('/').slice(0, -1).join('/') };
+            return { file: (f=moduleUri), path: f.split('/').slice(0, -1).join('/') };
         }
         else if ( isBrowser && (f = document.getElementsByTagName('script')) && f.length )
         {
@@ -80,7 +81,7 @@ var  root = this, PROTO = "prototype", HAS = 'hasOwnProperty'
         return { path: null, file: null };
     }
     
-    ,thisPath = path( exports.AMD ), tpf = thisPath.file
+    ,thisPath = path( ModuleFactory__Asynchronous.moduleUri ), tpf = thisPath.file
     
     ,notThisPath = function( p ) {
         return !!(p && p.length && p !== tpf);
