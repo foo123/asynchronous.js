@@ -27,10 +27,12 @@ else if ( !(name in root) ) /* Browser/WebWorker/.. */
 var  PROTO = "prototype", HAS = "hasOwnProperty"
     ,Obj = Object, Arr = Array, Func = Function
     ,FP = Func[PROTO], OP = Obj[PROTO], AP = Arr[PROTO]
+    ,fromJSON = JSON.parse, toJSON = JSON.stringify
     ,NOP = function( ){ }
+    ,curry = function( f, x ) { return function( ){ return f( x ); }; }
     ,slice = FP.call.bind( AP.slice ), toString = OP.toString
-    ,is_function = function(f) { return "function" === typeof f; }
-    ,is_instance = function(o, t) {return o instanceof t;}
+    ,is_function = function( f ) { return "function" === typeof f; }
+    ,is_instance = function( o, t ) { return o instanceof t; }
     ,SetTime = setTimeout, ClearTime = clearTimeout
     ,UNDEFINED = undef, UNKNOWN = 0, NODE = 1, BROWSER = 2
     ,DEFAULT_INTERVAL = 60, NONE = 0, INTERLEAVED = 1, LINEARISED = 2, PARALLELISED = 3, SEQUENCED = 4
@@ -46,18 +48,18 @@ var  PROTO = "prototype", HAS = "hasOwnProperty"
     ,isAMD = ("function" === typeof define ) && define.amd
     ,supportsMultiThread = isNode || ("function" === typeof Worker) || ("function" === typeof SharedWorker)
     ,isThread = isNodeProcess || isSharedWorker || isWebWorker
-    ,root = isNode ? this : (isSharedWorker || isWebWorker ? self : window)
-    ,scope = isNode ? module.$deps : (isSharedWorker || isWebWorker ? self : window)
-    ,globalScope = isNode ? global : (isSharedWorker || isWebWorker ? self : window)
-    ,Thread, numProcessors = isNode ? require('os').cpus( ).length : 4
-    ,fromJSON = JSON.parse, toJSON = JSON.stringify ,onMessage, shared_port
+    ,Listener = isThread ? function Listener( msg ) { if ( Listener.handler ) Listener.handler( isNodeProcess ? msg : msg.data );  } : NOP
+    ,root = isNode ? this : (isSharedWorker || isWebWorker ? self : window||this)
+    ,scope = isNode ? module.$deps : (isSharedWorker || isWebWorker ? self : window||this)
+    ,globalScope = isNode ? global : (isSharedWorker || isWebWorker ? self : window||this)
+    ,Thread, component = null, numProcessors = isNode ? require('os').cpus( ).length : 4
     
-    ,curry = function( f, a ){return function( ){return f(a);};}
-    
-    ,URL = "undefined" !== typeof root.webkitURL ? root.webkitURL : ("undefined" !== typeof root.URL ? root.URL : null)
+    ,URL = !isNode ? ("undefined" !== typeof root.webkitURL ? root.webkitURL : ("undefined" !== typeof root.URL ? root.URL : null)) : null
     ,blobURL = function( src, options ) {
-        if ( src && URL ) return URL.createObjectURL( new Blob( src.push ? src : [ src ], options || { type: "text/javascript" }) );
-        return src;
+        return src && URL
+            ? URL.createObjectURL( new Blob( src.push ? src : [ src ], options || { type: "text/javascript" }) )
+            : src
+        ;
     }
     
     // Get current filename/path
@@ -104,106 +106,15 @@ var  PROTO = "prototype", HAS = "hasOwnProperty"
     ,_uuid = 0
 ;
 
-if ( isSharedWorker )
-{
-    root.close = function( ) { };
-    root.postMessage = function( data ) { };
-    onMessage = function onMessage( handler ) {
-        if ( !!shared_port )
-        {
-            if ( handler )
-                shared_port.addEventListener('message', handler);
-            onMessage.handler = null;
-        }
-        else if ( handler )
-        {
-            onMessage.handler = handler;
-        }
-    };
-    root.onconnect = function( e ) {
-        shared_port = e.ports[0];
-        root.close = function( ) { shared_port.close( ); };
-        root.postMessage = function( data ) { shared_port.postMessage( data ); };
-        if ( onMessage.handler )
-        {
-            shared_port.addEventListener('message', onMessage.handler);
-            onMessage.handler = null;
-        }
-        shared_port.start( ); // Required when using addEventListener. Otherwise called implicitly by onmessage setter.
-    };
-}
-else if ( isWebWorker )
-{
-    onMessage = function onMessage( handler ) {
-        if ( handler )
-        {
-            root.onmessage = handler;
-        }
-    };
-}
-else if ( isNodeProcess )
-{
-    onMessage = function onMessage( handler ) {
-        if ( handler )
-        {
-            if ( onMessage.handler )
-            {
-                process.removeListener('message', onMessage.handler);
-                onMessage.handler = null;
-            }
-            var _handler;
-            process.on('message', _handler = function( msg ) {
-                handler( /*fromJSON(*/msg/*)*/ );
-            });
-            onMessage.handler = _handler;
-        }
-    };
-}
-else
-{
-    onMessage = NOP;
-}
-    
 if ( isNode )
 {
     // adapted from https://github.com/adambom/parallel.js
-    var fs = require('fs'), ps = require( 'child_process' );
-    if ( isThread )
-    {
-    root.close = function( ) { process.exit( ); };
-    root.postMessage = function( data ) { process.send( /*toJSON(*/ {data: data} /*)*/ ); };
-    root.importScripts = function( scripts )  {
-        if ( scripts && (scripts=scripts.split(',')).length )
-        {
-            var i=0, ok;
-            while ( i < scripts.length )
-            {
-                ok = true;
-                /*require( scripts[i] );
-                // import it into local scope
-                root[ name ] = require.cache[ scripts[i] ].Module.exports;
-                i++;*/
-                try {
-                    new Function( "",  fs.readFileSync( scripts[i] ).toString() ).call( scope );
-                } catch ( e ) {
-                    ok = e;
-                }
-                if ( true !== ok )
-                {
-                    throw ok;
-                    //break;
-                }
-                i++;
-            }
-        }
-    };
-    }    
     // https://nodejs.org/api/child_process.html#child_process_child_process_fork_modulepath_args_options
     Thread = function Thread( path ) {
         var self = this;
-        self.process = ps.fork( path, [], {silent: true} );
+        self.process = require( 'child_process' ).fork( path/*, [], {silent: true}*/ );
         self.process.on('message', function( msg ) {
-            if ( self.onmessage ) self.onmessage( /*fromJSON(*/ msg /*)*/ );
+            if ( self.onmessage ) self.onmessage( msg );
         });
         self.process.on('error', function( err ) {
             if ( self.onerror ) self.onerror( err );
@@ -220,7 +131,7 @@ if ( isNode )
         postMessage: function( data ) {
             if ( this.process )
             {
-                this.process.send( /*toJSON(*/ {data: data} /*)*/ );
+                this.process.send( data );
             }
             return this;
         },
@@ -240,11 +151,11 @@ else
     Thread = function( path ){
         var self = this;
         self.process = new Worker( path );
-        self.process.onmessage = function( e ) {
-            if ( self.onmessage ) self.onmessage( e );
+        self.process.onmessage = function( evt ) {
+            if ( self.onmessage ) self.onmessage( evt.data );
         };
-        self.process.onerror = function( e ) {
-            if ( self.onerror ) self.onerror( e );
+        self.process.onerror = function( err ) {
+            if ( self.onerror ) self.onerror( err );
         };
     };
     Thread.Shared = Thread;
@@ -278,11 +189,11 @@ else
             var self = this;
             self.process = new SharedWorker( path );
             self.process.port.start( );
-            self.process.port.onmessage = function( e ) {
-                if ( self.onmessage ) self.onmessage( e );
+            self.process.port.onmessage = function( evt ) {
+                if ( self.onmessage ) self.onmessage( evt.data );
             };
-            self.process.port.onerror = self.process.onerror = function( e ) {
-                if ( self.onerror ) self.onerror( e );
+            self.process.port.onerror = self.process.onerror = function( err ) {
+                if ( self.onerror ) self.onerror( err );
             };
         };
         Thread.Shared[PROTO] = {
@@ -310,6 +221,54 @@ else
             }
         };
     }
+}
+
+if ( isSharedWorker )
+{
+    root.close = NOP;
+    root.postMessage = NOP;
+    root.onconnect = function( e ) {
+        var shared_port = e.ports[0];
+        root.close = function( ) { shared_port.close( ); };
+        root.postMessage = function( data ) { shared_port.postMessage( data ); };
+        shared_port.addEventListener('message', Listener);
+        shared_port.start( ); // Required when using addEventListener. Otherwise called implicitly by onmessage setter.
+    };
+}
+else if ( isWebWorker )
+{
+    root.onmessage = Listener;
+}
+else if ( isNodeProcess )
+{
+    root.close = function( ) { process.exit( ); };
+    root.postMessage = function( data ) { process.send( data ); };
+    root.importScripts = function( scripts )  {
+        if ( scripts && (scripts=scripts.split(',')).length )
+        {
+            var i=0, ok, fs = require('fs');
+            while ( i < scripts.length )
+            {
+                ok = true;
+                /*require( scripts[i] );
+                // import it into local scope
+                root[ name ] = require.cache[ scripts[i] ].Module.exports;
+                i++;*/
+                try {
+                    new Function( "",  fs.readFileSync( scripts[i] ).toString() ).call( scope );
+                } catch ( e ) {
+                    ok = e;
+                }
+                if ( true !== ok )
+                {
+                    throw ok;
+                    //break;
+                }
+                i++;
+            }
+        }
+    };
+    process.on('message', Listener);
 }
 
 // Proxy to communication/asyc to another browser window
@@ -793,8 +752,9 @@ Asynchronous.load = function( component, imports, asInstance ) {
     }
     return null;
 };
-Asynchronous.postMessage = isThread ? function( m ){ root.postMessage( m ); } : NOP;
-Asynchronous.importScripts = isThread ? function( s ){ root.importScripts( s ); } : NOP;
+Asynchronous.listen = isThread ? function( handler ){ Listener.handler = handler; } : NOP;
+Asynchronous.send = isThread ? function( data ){ root.postMessage( data ); } : NOP;
+Asynchronous.importScripts = isThread ? function( scripts ){ root.importScripts( scripts ); } : NOP;
 Asynchronous.close = isThread ? function( ){ root.close( ); } : NOP;
 Asynchronous.log = "undefined" !== typeof console ? function( s ){ console.log( s||'' ); } : NOP;
 
@@ -886,28 +846,28 @@ Asynchronous[PROTO] = {
             
             self.$events = self.$events || { };
             thread = self.$thread = true === shared ? new Thread.Shared( tpf ) : new Thread( tpf );
-            thread.onmessage = function( evt ) {
-                if ( evt.data.event )
+            thread.onmessage = function( msg ) {
+                if ( msg.event )
                 {
-                    var event = evt.data.event, data = evt.data.data || null;
+                    var event = msg.event, data = msg.data || null;
                     if ( self.$events && self.$events[ event ] ) 
                     {
                         self.$events[ event ]( data );
                     }
                     else if ( "console.log" === event || "console.error" === event )
                     {
-                        Asynchronous.log( msgLog + (data.output||'') );
+                        Asynchronous.log( ("console.error" === event ? msgErr : msgLog) + (data||'') );
                     }
                 }
             };
-            thread.onerror = function( evt ) {
+            thread.onerror = function( err ) {
                 if ( self.$events && self.$events.error )
                 {
-                    self.$events.error( evt );
+                    self.$events.error( err );
                 }
                 else
                 {
-                    throw new Error( msgErr + evt.message + ' file: ' + evt.filename + ' line: ' + evt.lineno );
+                    throw new Error( msgErr + err.toString()/*err.message + ' file: ' + err.filename + ' line: ' + err.lineno*/ );
                 }
             };
             self.send( 'initThread', { component: component||null, asInstance: false !== asInstance, imports: imports ? [].concat(imports) : null } );
@@ -932,8 +892,8 @@ Asynchronous[PROTO] = {
         if ( isThread )
         {
             self.$events = { };
-            onMessage(function( evt ) {
-                var event = evt.data.event, data = evt.data.data || null;
+            Asynchronous.listen(function( msg ) {
+                var event = msg.event, data = msg.data || null;
                 if ( event && self.$events[event] )
                 {
                     self.$events[ event ]( data );
@@ -969,7 +929,7 @@ Asynchronous[PROTO] = {
         if ( event )
         {
             if ( isThread )
-                Asynchronous.postMessage({event: event, data: data || null});
+                Asynchronous.send({event: event, data: data || null});
             else if ( this.$thread )
                 this.$thread.postMessage({event: event, data: data || null});
         }
@@ -1125,41 +1085,42 @@ Asynchronous[PROTO] = {
 
 if ( isThread )
 {
-    var Component = null;
-    
-    globalScope.console = {
-        log: function(s){
-            Asynchronous.postMessage({event: 'console.log', data: {output: s||''}});
+    /*globalScope.console = {
+        log: function( s ){
+            Asynchronous.send({event: 'console.log', data: s||''});
         },
-        error: function(s){
-            Asynchronous.postMessage({event: 'console.error', data: {output: s||''}});
+        error: function( s ){
+            Asynchronous.send({event: 'console.error', data: s||''});
         }
+    };*/
+    //Asynchronous.log = function( o ){ globalScope.console.log( "string" !== typeof o ? toJSON( o ) : o); };
+    Asynchronous.log = function( o ){
+        Asynchronous.send({event: 'console.log', data: "string" !== typeof o ? toJSON( o ) : o});
     };
-    Asynchronous.log = function( o ){ globalScope.console.log( "string" !== typeof o ? toJSON( o ) : o); };
     
-    onMessage(function( evt ) {
-        var event = evt.data.event, data = evt.data.data || null;
+    Asynchronous.listen(function( msg ) {
+        var event = msg.event, data = msg.data || null;
         switch( event )
         {
             case 'initThread':
                 if ( data && data.component )
                 {
-                    if ( Component )
+                    if ( component )
                     {
                         // optionally call Component.dispose method if exists
-                        if ( is_function(Component.dispose) ) Component.dispose( );
-                        Component = null;
+                        if ( is_function(component.dispose) ) component.dispose( );
+                        component = null;
                     }
-                    Component = Asynchronous.load( data.component, data.imports, data.asInstance );
+                    component = Asynchronous.load( data.component, data.imports, data.asInstance );
                 }
                 break;
             case 'dispose':
-            default:
-                if ( Component )
+            //default:
+                if ( component )
                 {
                     // optionally call Component.dispsoe method if exists
-                    if ( is_function(Component.dispose) ) Component.dispose( );
-                    Component = null;
+                    if ( is_function(component.dispose) ) component.dispose( );
+                    component = null;
                 }
                 Asynchronous.close( );
                 break;
