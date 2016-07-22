@@ -52,7 +52,7 @@ var  PROTO = "prototype", HAS = "hasOwnProperty"
     ,root = isNode ? this : (isSharedWorker || isWebWorker ? self : window||this)
     ,scope = isNode ? module.$deps : (isSharedWorker || isWebWorker ? self : window||this)
     ,globalScope = isNode ? global : (isSharedWorker || isWebWorker ? self : window||this)
-    ,Thread, component = null, numProcessors = isNode ? require('os').cpus( ).length : 4
+    ,Thread, component = null, LOADED = {}, numProcessors = isNode ? require('os').cpus( ).length : 4
     
     ,URL = !isNode ? ("undefined" !== typeof root.webkitURL ? root.webkitURL : ("undefined" !== typeof root.URL ? root.URL : null)) : null
     ,blobURL = function( src, options ) {
@@ -89,10 +89,6 @@ var  PROTO = "prototype", HAS = "hasOwnProperty"
     
     ,thisPath = path( ModuleFactory__Asynchronous.moduleUri ), tpf = thisPath.file
     
-    ,notThisPath = function( p ) {
-        return !!(p && p.length && p !== tpf);
-    }
-    
     ,extend = function( o1, o2 ) {
         o1 = o1 || {};
         if ( o2 )
@@ -105,6 +101,8 @@ var  PROTO = "prototype", HAS = "hasOwnProperty"
     
     ,_uuid = 0
 ;
+
+LOADED[tpf] = 1;
 
 if ( isNode )
 {
@@ -243,30 +241,9 @@ else if ( isNodeProcess )
 {
     root.close = function( ) { process.exit( ); };
     root.postMessage = function( data ) { process.send( data ); };
-    root.importScripts = function( scripts )  {
-        if ( scripts && (scripts=scripts.split(',')).length )
-        {
-            var i=0, ok, fs = require('fs');
-            while ( i < scripts.length )
-            {
-                ok = true;
-                /*require( scripts[i] );
-                // import it into local scope
-                root[ name ] = require.cache[ scripts[i] ].Module.exports;
-                i++;*/
-                try {
-                    new Function( "",  fs.readFileSync( scripts[i] ).toString() ).call( scope );
-                } catch ( e ) {
-                    ok = e;
-                }
-                if ( true !== ok )
-                {
-                    throw ok;
-                    //break;
-                }
-                i++;
-            }
-        }
+    root.importScripts = function( script )  {
+        try { new Function( "",  require('fs').readFileSync( script ).toString() ).call( scope ); }
+        catch ( e ) { throw e; }
     };
     process.on('message', Listener);
 }
@@ -329,7 +306,7 @@ BrowserWindow[PROTO] = {
         var self = this, 
             on_window_ready = function on_window_ready( ){
                 if ( !self.$window || (!!variable && !self.$window[variable]) )
-                    setTimeout(on_window_ready, 50);
+                    setTimeout(on_window_ready, 60);
                 else cb( );
             };
         setTimeout(on_window_ready, 0);
@@ -735,18 +712,14 @@ Asynchronous.load = function( component, imports, asInstance ) {
         // do any imports if needed
         if ( imports && imports.length )
         {
-            imports = imports.filter( notThisPath );
-            if ( imports.length ) 
+            /*if ( isBrowserWindow ) 
             {
-                /*if ( isBrowserWindow ) 
-                {
-                    Asynchronous.importScripts( imports.join( ',' ), initComponent );
-                }
-                else
-                {*/
-                    Asynchronous.importScripts( imports.join( ',' ) );
-                /*}*/
+                Asynchronous.importScripts( imports.join( ',' ), initComponent );
             }
+            else
+            {*/
+                Asynchronous.importScripts( imports.join ? imports.join( ',' ) : imports );
+            /*}*/
         }
        return initComponent( );
     }
@@ -754,13 +727,29 @@ Asynchronous.load = function( component, imports, asInstance ) {
 };
 Asynchronous.listen = isThread ? function( handler ){ Listener.handler = handler; } : NOP;
 Asynchronous.send = isThread ? function( data ){ root.postMessage( data ); } : NOP;
-Asynchronous.importScripts = isThread ? function( scripts ){ root.importScripts( scripts ); } : NOP;
+Asynchronous.importScripts = isThread
+? function( scripts ){
+    if ( scripts && scripts.length )
+    {
+        if ( scripts.split ) scripts = scripts.split(',');
+        for(var i=0,l=scripts.length; i<l; i++)
+        {
+            var src = scripts[i];
+            if ( src && src.length && (1 !== LOADED[ src ]) )
+            {
+                root.importScripts( src );
+                LOADED[ src ] = 1;
+            }
+        }
+    }
+}
+: NOP;
 Asynchronous.close = isThread ? function( ){ root.close( ); } : NOP;
 Asynchronous.log = "undefined" !== typeof console ? function( s ){ console.log( s||'' ); } : NOP;
 
 // async queue as serializer
 Asynchronous.serialize = function( queue ) {
-    queue = queue || new Asynchronous( );
+    queue = queue || new Asynchronous( 0, false );
     var serialize = function( func ) {
         var serialized = function( ) {
             var scope = this, args = arguments;
@@ -870,7 +859,7 @@ Asynchronous[PROTO] = {
                     throw new Error( msgErr + err.toString()/*err.message + ' file: ' + err.filename + ' line: ' + err.lineno*/ );
                 }
             };
-            self.send( 'initThread', { component: component||null, asInstance: false !== asInstance, imports: imports ? [].concat(imports) : null } );
+            self.send( 'initThread', { component: component||null, asInstance: false !== asInstance, imports: imports ? [].concat(imports).join(',') : null } );
         }
         return self;
     }
