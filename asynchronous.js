@@ -1,7 +1,7 @@
 /**
 *
 *   Asynchronous.js
-*   @version: 0.5.0
+*   @version: 0.5.1
 *
 *   Simple JavaScript class to manage asynchronous, parallel, linear, sequential and interleaved tasks
 *   https://github.com/foo123/asynchronous.js
@@ -47,11 +47,12 @@ var  PROTO = "prototype", HAS = "hasOwnProperty"
     ,isBrowserFrame = isBrowser && (window.self !== window.top)
     ,isAMD = ("function" === typeof define ) && define.amd
     ,supportsMultiThread = isNode || ("function" === typeof Worker) || ("function" === typeof SharedWorker)
+    ,root = isNode ? this : (isSharedWorker || isWebWorker ? self||this : window||this)
+    ,scope = isNode ? module.$deps : (isSharedWorker || isWebWorker ? self||this : window||this)
+    ,globalScope = isNode ? global : (isSharedWorker || isWebWorker ? self||this : window||this)
     ,isThread = isNodeProcess || isSharedWorker || isWebWorker
-    ,Listener = isThread ? function Listener( msg ) { if ( Listener.handler ) Listener.handler( isNodeProcess ? msg : msg.data );  } : NOP
-    ,root = isNode ? this : (isSharedWorker || isWebWorker ? self : window||this)
-    ,scope = isNode ? module.$deps : (isSharedWorker || isWebWorker ? self : window||this)
-    ,globalScope = isNode ? global : (isSharedWorker || isWebWorker ? self : window||this)
+    ,isInstantiatedThread = (isNodeProcess && (0 === process.listenerCount('message'))) || (isSharedWorker && !root.onconnect) || (isWebWorker && !root.onmessage)
+    ,Listener = isInstantiatedThread ? function Listener( msg ) { if ( Listener.handler ) Listener.handler( isNodeProcess ? msg : msg.data );  } : NOP
     ,Thread, component = null, LOADED = {}, numProcessors = isNode ? require('os').cpus( ).length : 4
     
     ,URL = !isNode ? ("undefined" !== typeof root.webkitURL ? root.webkitURL : ("undefined" !== typeof root.URL ? root.URL : null)) : null
@@ -221,6 +222,8 @@ else
     }
 }
 
+if ( isInstantiatedThread )
+{
 if ( isSharedWorker )
 {
     root.close = NOP;
@@ -246,6 +249,7 @@ else if ( isNodeProcess )
         catch ( e ) { throw e; }
     };
     process.on('message', Listener);
+}
 }
 
 // Proxy to communication/asyc to another browser window
@@ -652,9 +656,9 @@ var Asynchronous = function Asynchronous( interval, initThread ) {
     self.$runmode = NONE;
     self.$running = false;
     self.$queue = [ ];
-    if ( isThread && (false !== initThread) ) self.initThread( );
+    if ( isInstantiatedThread && (false !== initThread) ) self.initThread( );
 };
-Asynchronous.VERSION = "0.5.0";
+Asynchronous.VERSION = "0.5.1";
 Asynchronous.Thread = Thread;
 Asynchronous.Task = Task;
 Asynchronous.BrowserWindow = BrowserWindow;
@@ -666,10 +670,11 @@ Asynchronous.isPlatform = function( platform ) {
     else if ( BROWSER === platform ) return isBrowser;
     return undef; 
 };
-Asynchronous.isThread = function( platform ) { 
-    if ( NODE === platform ) return isNodeProcess;
-    else if ( BROWSER === platform ) return isSharedWorker || isWebWorker;
-    return isThread; 
+Asynchronous.isThread = function( platform, instantiated ) { 
+    instantiated = true === instantiated ? isInstantiatedThread : true;
+    if ( NODE === platform ) return instantiated && isNodeProcess;
+    else if ( BROWSER === platform ) return instantiated && (isSharedWorker || isWebWorker);
+    return instantiated && isThread; 
 };
 Asynchronous.path = path;
 Asynchronous.blob = blobURL;
@@ -725,9 +730,9 @@ Asynchronous.load = function( component, imports, asInstance ) {
     }
     return null;
 };
-Asynchronous.listen = isThread ? function( handler ){ Listener.handler = handler; } : NOP;
-Asynchronous.send = isThread ? function( data ){ root.postMessage( data ); } : NOP;
-Asynchronous.importScripts = isThread
+Asynchronous.listen = isInstantiatedThread ? function( handler ){ Listener.handler = handler; } : NOP;
+Asynchronous.send = isInstantiatedThread ? function( data ){ root.postMessage( data ); } : NOP;
+Asynchronous.importScripts = isInstantiatedThread
 ? function( scripts ){
     if ( scripts && scripts.length )
     {
@@ -744,7 +749,7 @@ Asynchronous.importScripts = isThread
     }
 }
 : NOP;
-Asynchronous.close = isThread ? function( ){ root.close( ); } : NOP;
+Asynchronous.close = isInstantiatedThread ? function( ){ root.close( ); } : NOP;
 Asynchronous.log = "undefined" !== typeof console ? function( s ){ console.log( s||'' ); } : NOP;
 
 // async queue as serializer
@@ -786,7 +791,7 @@ Asynchronous[PROTO] = {
         self.$queue = null;
         self.$runmode = NONE;
         self.$running = false;
-        if ( isThread && (true === thread) ) Asynchronous.close( );
+        if ( isInstantiatedThread && (true === thread) ) Asynchronous.close( );
         return self;
     }
     
@@ -878,7 +883,7 @@ Asynchronous[PROTO] = {
     
     ,initThread: function( ) {
         var self = this;
-        if ( isThread )
+        if ( isInstantiatedThread )
         {
             self.$events = { };
             Asynchronous.listen(function( msg ) {
@@ -917,7 +922,7 @@ Asynchronous[PROTO] = {
     ,send: function( event, data ) {
         if ( event )
         {
-            if ( isThread )
+            if ( isInstantiatedThread )
                 Asynchronous.send({event: event, data: data || null});
             else if ( this.$thread )
                 this.$thread.postMessage({event: event, data: data || null});
@@ -1072,7 +1077,7 @@ Asynchronous[PROTO] = {
     }
 };
 
-if ( isThread )
+if ( isInstantiatedThread )
 {
     /*globalScope.console = {
         log: function( s ){
